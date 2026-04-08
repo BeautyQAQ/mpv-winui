@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="MpvShell.App.Views.PlayerPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:interop="using:MpvShell.Interop.VideoHost"
+    Loaded="OnLoaded">
+    <Grid Background="#0B1220"
+          PointerPressed="OnAnyPointerActivity"
+          PointerMoved="OnAnyPointerActivity">
+        <interop:VideoHostControl x:Name="VideoHost" />
+        <Grid x:Name="InteractionSurface"
+              Background="Transparent"
+              PointerPressed="OnVideoPointerPressed"
+              PointerMoved="OnVideoPointerMoved"
+              PointerReleased="OnVideoPointerReleased" />
+
+        <Grid VerticalAlignment="Top" Margin="24">
+            <StackPanel Orientation="Horizontal" Spacing="12">
+                <TextBox Width="520"
+                         PlaceholderText="粘贴 HTTP / HTTPS / m3u8 地址"
+                         Text="{Binding UrlText, Mode=TwoWay}" />
+                <Button Content="播放"
+                        Height="48"
+                        MinWidth="96"
+                        Command="{Binding OpenUrlCommand}" />
+            </StackPanel>
+        </Grid>
+
+        <Border VerticalAlignment="Bottom"
+                Margin="24"
+                Padding="20"
+                Background="#CC111827"
+                CornerRadius="20">
+            <StackPanel Spacing="16">
+                <Slider Height="32"
+                        Minimum="0"
+                        Maximum="{Binding State.DurationSeconds}"
+                        Value="{Binding State.PositionSeconds, Mode=TwoWay}"
+                        ManipulationCompleted="OnTimelineManipulationCompleted" />
+                <StackPanel Orientation="Horizontal" Spacing="12">
+                    <Button Content="-15s"
+                            MinWidth="120"
+                            Height="56"
+                            Command="{Binding SeekBackwardCommand}" />
+                    <Button Content="播放 / 暂停"
+                            MinWidth="160"
+                            Height="56"
+                            Command="{Binding TogglePlayPauseCommand}" />
+                    <Button Content="+30s"
+                            MinWidth="120"
+                            Height="56"
+                            Command="{Binding SeekForwardCommand}" />
+                    <Button Content="字幕 / 音轨"
+                            MinWidth="160"
+                            Height="56"
+                            Command="{Binding ToggleTracksCommand}" />
+                    <Button Content="OSD"
+                            MinWidth="120"
+                            Height="56"
+                            Command="{Binding ToggleOsdCommand}" />
+                </StackPanel>
+            </StackPanel>
+        </Border>
+    </Grid>
+</Page>

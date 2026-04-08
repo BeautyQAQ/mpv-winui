@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
+    <UseWinUI>true</UseWinUI>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="9.0.4" />
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.260317003" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\MpvShell.Interop.VideoHost\MpvShell.Interop.VideoHost.csproj" />
+    <ProjectReference Include="..\MpvShell.Player.Abstractions\MpvShell.Player.Abstractions.csproj" />
+    <ProjectReference Include="..\MpvShell.Player.MpvSidecar\MpvShell.Player.MpvSidecar.csproj" />
+  </ItemGroup>
+</Project>
