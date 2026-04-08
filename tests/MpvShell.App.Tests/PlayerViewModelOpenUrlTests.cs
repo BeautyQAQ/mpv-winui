@@ -24,8 +24,38 @@ public sealed class PlayerViewModelOpenUrlTests
         vm.State.AreControlsVisible.Should().BeTrue();
     }
 
+    [Fact]
+    public async Task Open_url_should_refresh_recent_urls_tracks_and_info_panel()
+    {
+        var backend = new FakeBackend
+        {
+            Tracks =
+            [
+                new TrackInfo(1, "audio", "ja", "Japanese 5.1", true),
+                new TrackInfo(2, "sub", "zh", "中文字幕", false),
+            ],
+            Snapshot = new InfoPanelSnapshot("hevc", "eac3", "HDR10", "3840x2160", "10-bit", "23.976", "forward=8s"),
+        };
+
+        var vm = new PlayerViewModel(backend, new PlaybackInteractionCoordinator())
+        {
+            UrlText = " https://example.com/master.m3u8 "
+        };
+
+        await vm.OpenUrlCommand.ExecuteAsync(null);
+
+        vm.RecentUrls.Should().ContainSingle().Which.Should().Be("https://example.com/master.m3u8");
+        vm.Tracks.Should().HaveCount(2);
+        vm.InfoPanel.VideoSummary.Should().Contain("hevc");
+        vm.InfoPanel.HdrSummary.Should().Contain("HDR10");
+    }
+
     private sealed class FakeBackend : IPlayerBackend
     {
+        public IReadOnlyList<TrackInfo> Tracks { get; init; } = Array.Empty<TrackInfo>();
+
+        public InfoPanelSnapshot Snapshot { get; init; } = new(null, null, null, null, null, null, null);
+
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
         public Task InitializeAsync(nint hostHandle, CancellationToken cancellationToken) => Task.CompletedTask;
@@ -45,14 +75,14 @@ public sealed class PlayerViewModelOpenUrlTests
         public Task SetMuteAsync(bool muted, CancellationToken cancellationToken) => Task.CompletedTask;
 
         public Task<IReadOnlyList<TrackInfo>> GetTracksAsync(CancellationToken cancellationToken) =>
-            Task.FromResult<IReadOnlyList<TrackInfo>>(Array.Empty<TrackInfo>());
+            Task.FromResult(Tracks);
 
         public Task SetAudioTrackAsync(int trackId, CancellationToken cancellationToken) => Task.CompletedTask;
 
         public Task SetSubtitleTrackAsync(int trackId, CancellationToken cancellationToken) => Task.CompletedTask;
 
         public Task<InfoPanelSnapshot> GetInfoSnapshotAsync(CancellationToken cancellationToken) =>
-            Task.FromResult(new InfoPanelSnapshot(null, null, null, null, null, null, null));
+            Task.FromResult(Snapshot);
 
         public async IAsyncEnumerable<PlayerEvent> ObserveEventsAsync(
             [EnumeratorCancellation] CancellationToken cancellationToken)

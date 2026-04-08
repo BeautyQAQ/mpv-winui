@@ -4,8 +4,10 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:interop="using:MpvShell.Interop.VideoHost"
+    xmlns:models="using:MpvShell.Player.Abstractions.Models"
     Loaded="OnLoaded">
-    <Grid Background="#0B1220"
+    <Grid x:Name="RootGrid"
+          Background="#0B1220"
           PointerPressed="OnAnyPointerActivity"
           PointerMoved="OnAnyPointerActivity">
         <interop:VideoHostControl x:Name="VideoHost" />
@@ -15,23 +17,105 @@
               PointerMoved="OnVideoPointerMoved"
               PointerReleased="OnVideoPointerReleased" />
 
-        <Grid VerticalAlignment="Top" Margin="24">
-            <StackPanel Orientation="Horizontal" Spacing="12">
-                <TextBox Width="520"
-                         PlaceholderText="粘贴 HTTP / HTTPS / m3u8 地址"
-                         Text="{Binding UrlText, Mode=TwoWay}" />
-                <Button Content="播放"
-                        Height="48"
-                        MinWidth="96"
-                        Command="{Binding OpenUrlCommand}" />
+        <Border VerticalAlignment="Top"
+                Margin="24"
+                Padding="16"
+                Background="#D9111827"
+                CornerRadius="18"
+                Visibility="{Binding ControlsVisibility}">
+            <StackPanel Spacing="12">
+                <TextBlock Text="{Binding State.CurrentUrl, FallbackValue=未加载媒体}"
+                           FontSize="14"
+                           Opacity="0.85" />
+                <StackPanel Orientation="Horizontal" Spacing="12">
+                    <TextBox Width="520"
+                             PlaceholderText="粘贴 HTTP / HTTPS / m3u8 地址"
+                             Text="{Binding UrlText, Mode=TwoWay}" />
+                    <Button Content="播放"
+                            Height="48"
+                            MinWidth="96"
+                            Command="{Binding OpenUrlCommand}" />
+                </StackPanel>
             </StackPanel>
-        </Grid>
+        </Border>
+
+        <Border HorizontalAlignment="Right"
+                VerticalAlignment="Top"
+                Margin="24"
+                Padding="16"
+                Background="#E5111827"
+                CornerRadius="16"
+                Visibility="{Binding InfoPanelVisibility}">
+            <StackPanel Spacing="8" MaxWidth="360">
+                <TextBlock Text="详细信息" FontSize="20" FontWeight="SemiBold" />
+                <TextBlock Text="{Binding InfoPanel.VideoSummary}" TextWrapping="WrapWholeWords" />
+                <TextBlock Text="{Binding InfoPanel.AudioSummary}" TextWrapping="WrapWholeWords" />
+                <TextBlock Text="{Binding InfoPanel.HdrSummary}" TextWrapping="WrapWholeWords" />
+            </StackPanel>
+        </Border>
+
+        <Border HorizontalAlignment="Left"
+                VerticalAlignment="Bottom"
+                Margin="24,24,24,140"
+                Padding="16"
+                Background="#E50F172A"
+                CornerRadius="16"
+                Visibility="{Binding TracksVisibility}">
+            <StackPanel Spacing="12" MaxWidth="360">
+                <TextBlock Text="字幕 / 音轨" FontSize="20" FontWeight="SemiBold" />
+                <ItemsControl ItemsSource="{Binding Tracks}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="models:TrackInfo">
+                            <Button HorizontalAlignment="Stretch"
+                                    Padding="12"
+                                    Command="{Binding DataContext.SelectTrackCommand, ElementName=RootGrid}"
+                                    CommandParameter="{Binding}">
+                                <StackPanel Spacing="4">
+                                    <TextBlock Text="{Binding Title, TargetNullValue=未命名轨道}" />
+                                    <TextBlock Opacity="0.75"
+                                               Text="{Binding Kind}" />
+                                </StackPanel>
+                            </Button>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+        </Border>
+
+        <Border HorizontalAlignment="Right"
+                VerticalAlignment="Bottom"
+                Margin="24,24,24,140"
+                Padding="16"
+                Background="#E51F2937"
+                CornerRadius="16"
+                Visibility="{Binding OsdVisibility}">
+            <StackPanel Spacing="12" MaxWidth="360">
+                <TextBlock Text="OSD" FontSize="20" FontWeight="SemiBold" />
+                <Button Content="字幕 / 音轨"
+                        Command="{Binding ToggleTracksCommand}" />
+                <Button Content="详细信息"
+                        Command="{Binding ToggleInfoPanelCommand}" />
+                <TextBlock Margin="0,8,0,0"
+                           Text="最近 URL"
+                           FontSize="16"
+                           FontWeight="SemiBold" />
+                <ItemsControl ItemsSource="{Binding RecentUrls}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding}"
+                                       TextWrapping="WrapWholeWords" />
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+        </Border>
 
         <Border VerticalAlignment="Bottom"
                 Margin="24"
                 Padding="20"
                 Background="#CC111827"
-                CornerRadius="20">
+                CornerRadius="20"
+                Visibility="{Binding ControlsVisibility}">
             <StackPanel Spacing="16">
                 <Slider Height="32"
                         Minimum="0"

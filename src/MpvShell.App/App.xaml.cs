@@ -21,6 +21,8 @@ public partial class App : Application
         services.AddSingleton<IPlayerBackend, MpvSidecarBackend>();
         services.AddSingleton<PlaybackInteractionCoordinator>();
         services.AddSingleton<GestureDecisionEngine>();
+        services.AddSingleton<RecentUrlStore>();
+        services.AddSingleton<InfoPanelViewModel>();
         services.AddSingleton<PlayerViewModel>();
         services.AddTransient<MainWindow>();
         Services = services.BuildServiceProvider();
