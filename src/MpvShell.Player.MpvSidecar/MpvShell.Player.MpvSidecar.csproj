@@ -1,0 +1,9 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\MpvShell.Player.Abstractions\MpvShell.Player.Abstractions.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup />
+
+</Project>
