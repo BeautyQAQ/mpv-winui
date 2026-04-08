@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "mpv-winui (Package)": {
+      "commandName": "MsixPackage"
+    },
+    "mpv-winui (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}
