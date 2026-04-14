@@ -1511,7 +1511,7 @@ git commit -m "feat: add osd info panel and recent urls"
 - Create: `tests/MpvShell.App.Tests/ErrorPresentationTests.cs`
 - Create: `docs/manual-test-checklist.md`
 
-- [ ] **Step 1: 写失败测试，锁定后端错误向 UI 冒泡的行为**
+- [x] **Step 1: 写失败测试，锁定后端错误向 UI 冒泡的行为**
 
 ```csharp
 using FluentAssertions;
@@ -1557,7 +1557,7 @@ public sealed class ErrorPresentationTests
 }
 ```
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run:
 
@@ -1567,7 +1567,7 @@ dotnet test tests/MpvShell.App.Tests/MpvShell.App.Tests.csproj -v minimal --filt
 
 Expected: FAIL，报 `ErrorMessage` 未定义，或 `OpenUrlAsync` 未把异常转成 UI 错误状态。
 
-- [ ] **Step 3: 写最小实现，补全错误通路和人工验收清单**
+- [x] **Step 3: 写最小实现，补全错误通路和人工验收清单**
 
 ```csharp
 // MpvSidecarBackend.cs 中补异常保护
@@ -1640,6 +1640,8 @@ dotnet build MpvShell.sln -v minimal
 ```
 
 Expected: 所有测试 PASS，且 BUILD SUCCEEDED
+
+> 当前会话已完成等价自动化验证（全部测试项目通过 + App 项目构建成功）；因会话环境无法执行真实交互，V1 清单的人机交互项待本地手工逐条勾选。
 
 Manual check:
 

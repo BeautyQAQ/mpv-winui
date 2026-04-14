@@ -3,6 +3,7 @@ using CommunityToolkit.Mvvm.Input;
 using Microsoft.UI.Xaml;
 using MpvShell.App.Services;
 using MpvShell.Player.Abstractions;
+using MpvShell.Player.Abstractions.Events;
 using MpvShell.Player.Abstractions.Models;
 using System.Collections.ObjectModel;
 
@@ -15,6 +16,8 @@ public partial class PlayerViewModel : ObservableObject
     private readonly GestureDecisionEngine _gestureDecisionEngine;
     private readonly RecentUrlStore _recentUrlStore;
     private bool _isInitialized;
+    private CancellationTokenSource? _eventPumpCts;
+    private Task? _eventPumpTask;
     private PlaybackState _state = PlaybackState.Initial;
     private string _urlText = string.Empty;
 
@@ -86,6 +89,25 @@ public partial class PlayerViewModel : ObservableObject
         set => SetProperty(ref _urlText, value);
     }
 
+    private string? _errorMessage;
+
+    public string? ErrorMessage
+    {
+        get => _errorMessage;
+        private set
+        {
+            if (!SetProperty(ref _errorMessage, value))
+            {
+                return;
+            }
+
+            OnPropertyChanged(nameof(ErrorVisibility));
+        }
+    }
+
+    public Visibility ErrorVisibility =>
+        string.IsNullOrWhiteSpace(ErrorMessage) ? Visibility.Collapsed : Visibility.Visible;
+
     public async Task InitializeAsync(nint hostHandle)
     {
         if (_isInitialized || hostHandle == 0)
@@ -93,8 +115,17 @@ public partial class PlayerViewModel : ObservableObject
             return;
         }
 
-        await _backend.InitializeAsync(hostHandle, CancellationToken.None);
-        _isInitialized = true;
+        try
+        {
+            await _backend.InitializeAsync(hostHandle, CancellationToken.None);
+            _isInitialized = true;
+            StartEventPump();
+            ErrorMessage = null;
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+        }
     }
 
     public void OnIdleTimeout()
@@ -121,9 +152,17 @@ public partial class PlayerViewModel : ObservableObject
 
     public async Task SeekToAsync(double seconds)
     {
-        var clampedSeconds = ClampPosition(seconds);
-        await _backend.SetPositionAsync(clampedSeconds, CancellationToken.None);
-        State = _coordinator.ShowControls(State with { PositionSeconds = clampedSeconds });
+        try
+        {
+            var clampedSeconds = ClampPosition(seconds);
+            await _backend.SetPositionAsync(clampedSeconds, CancellationToken.None);
+            State = _coordinator.ShowControls(State with { PositionSeconds = clampedSeconds });
+            ErrorMessage = null;
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+        }
     }
 
     [RelayCommand]
@@ -134,7 +173,15 @@ public partial class PlayerViewModel : ObservableObject
             return;
         }
 
-        await LoadUrlAsync(UrlText.Trim());
+        try
+        {
+            await LoadUrlAsync(UrlText.Trim());
+            ErrorMessage = null;
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+        }
     }
 
     [RelayCommand]
@@ -170,15 +217,24 @@ public partial class PlayerViewModel : ObservableObject
     [RelayCommand]
     private async Task TogglePlayPauseAsync()
     {
-        if (State.IsPlaying)
+        try
         {
-            await _backend.PauseAsync(CancellationToken.None);
-            State = _coordinator.ShowControls(State with { IsPlaying = false });
-            return;
-        }
+            if (State.IsPlaying)
+            {
+                await _backend.PauseAsync(CancellationToken.None);
+                State = _coordinator.ShowControls(State with { IsPlaying = false });
+                ErrorMessage = null;
+                return;
+            }
 
-        await _backend.PlayAsync(CancellationToken.None);
-        State = _coordinator.ShowControls(State with { IsPlaying = true });
+            await _backend.PlayAsync(CancellationToken.None);
+            State = _coordinator.ShowControls(State with { IsPlaying = true });
+            ErrorMessage = null;
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+        }
     }
 
     [RelayCommand]
@@ -195,24 +251,40 @@ public partial class PlayerViewModel : ObservableObject
             return;
         }
 
-        if (IsAudioTrack(track))
+        try
         {
-            await _backend.SetAudioTrackAsync(track.Id, CancellationToken.None);
-        }
-        else
-        {
-            await _backend.SetSubtitleTrackAsync(track.Id, CancellationToken.None);
-        }
+            if (IsAudioTrack(track))
+            {
+                await _backend.SetAudioTrackAsync(track.Id, CancellationToken.None);
+            }
+            else
+            {
+                await _backend.SetSubtitleTrackAsync(track.Id, CancellationToken.None);
+            }
 
-        ReplaceTrackSelection(track);
-        State = _coordinator.ShowControls(State);
+            ReplaceTrackSelection(track);
+            State = _coordinator.ShowControls(State);
+            ErrorMessage = null;
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+        }
     }
 
     private async Task SeekRelativeAsync(double deltaSeconds)
     {
-        await _backend.SeekAsync(deltaSeconds, CancellationToken.None);
-        var nextPosition = ClampPosition(State.PositionSeconds + deltaSeconds);
-        State = _coordinator.ShowControls(State with { PositionSeconds = nextPosition });
+        try
+        {
+            await _backend.SeekAsync(deltaSeconds, CancellationToken.None);
+            var nextPosition = ClampPosition(State.PositionSeconds + deltaSeconds);
+            State = _coordinator.ShowControls(State with { PositionSeconds = nextPosition });
+            ErrorMessage = null;
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+        }
     }
 
     private async Task LoadUrlAsync(string url)
@@ -266,4 +338,42 @@ public partial class PlayerViewModel : ObservableObject
         State.DurationSeconds > 0
             ? Math.Clamp(seconds, 0, State.DurationSeconds)
             : Math.Max(0, seconds);
+
+    private void StartEventPump()
+    {
+        _eventPumpCts?.Cancel();
+        _eventPumpCts?.Dispose();
+
+        _eventPumpCts = new CancellationTokenSource();
+        _eventPumpTask = Task.Run(() => ObserveBackendEventsAsync(_eventPumpCts.Token));
+    }
+
+    private async Task ObserveBackendEventsAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await foreach (var playerEvent in _backend.ObserveEventsAsync(cancellationToken).WithCancellation(cancellationToken))
+            {
+                switch (playerEvent)
+                {
+                    case PlaybackStateChanged stateChanged:
+                        State = stateChanged.State;
+                        break;
+                    case TracksChanged tracksChanged:
+                        ReplaceTracks(tracksChanged.Tracks);
+                        break;
+                    case BackendFaulted faulted:
+                        ErrorMessage = faulted.Message;
+                        break;
+                }
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+        }
+    }
 }

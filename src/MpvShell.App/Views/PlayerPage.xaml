@@ -39,6 +39,17 @@
             </StackPanel>
         </Border>
 
+        <Border VerticalAlignment="Top"
+                Margin="24,132,24,0"
+                Padding="12"
+                Background="#CC7F1D1D"
+                CornerRadius="12"
+                Visibility="{Binding ErrorVisibility}">
+            <TextBlock Text="{Binding ErrorMessage}"
+                       TextWrapping="WrapWholeWords"
+                       Foreground="#FFFEE2E2" />
+        </Border>
+
         <Border HorizontalAlignment="Right"
                 VerticalAlignment="Top"
                 Margin="24"
