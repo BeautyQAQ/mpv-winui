@@ -14,7 +14,7 @@
 
 ### 根目录
 
-- Create: `MpvShell.sln`
+- Create: `MpvShell.slnx`
 - Create: `Directory.Build.props`
 
 ### 应用层
@@ -92,7 +92,7 @@
 ### Task 1: 搭建解决方案骨架与统一状态模型
 
 **Files:**
-- Create: `MpvShell.sln`
+- Create: `MpvShell.slnx`
 - Create: `Directory.Build.props`
 - Create: `src/MpvShell.Player.Abstractions/MpvShell.Player.Abstractions.csproj`
 - Create: `src/MpvShell.Player.Abstractions/IPlayerBackend.cs`
@@ -134,11 +134,11 @@ public sealed class PlaybackStateTests
 Run:
 
 ```bash
-dotnet new sln -n MpvShell
+dotnet new sln -n MpvShell -f slnx
 dotnet new classlib -n MpvShell.Player.Abstractions -o src/MpvShell.Player.Abstractions
 dotnet new xunit -n MpvShell.Player.Abstractions.Tests -o tests/MpvShell.Player.Abstractions.Tests
-dotnet sln MpvShell.sln add src/MpvShell.Player.Abstractions/MpvShell.Player.Abstractions.csproj
-dotnet sln MpvShell.sln add tests/MpvShell.Player.Abstractions.Tests/MpvShell.Player.Abstractions.Tests.csproj
+dotnet sln MpvShell.slnx add src/MpvShell.Player.Abstractions/MpvShell.Player.Abstractions.csproj
+dotnet sln MpvShell.slnx add tests/MpvShell.Player.Abstractions.Tests/MpvShell.Player.Abstractions.Tests.csproj
 dotnet add tests/MpvShell.Player.Abstractions.Tests/MpvShell.Player.Abstractions.Tests.csproj reference src/MpvShell.Player.Abstractions/MpvShell.Player.Abstractions.csproj
 dotnet add tests/MpvShell.Player.Abstractions.Tests/MpvShell.Player.Abstractions.Tests.csproj package FluentAssertions
 dotnet test tests/MpvShell.Player.Abstractions.Tests/MpvShell.Player.Abstractions.Tests.csproj -v minimal
@@ -236,7 +236,7 @@ Expected: PASS
 - [ ] **Step 5: 提交**
 
 ```bash
-git add MpvShell.sln Directory.Build.props src/MpvShell.Player.Abstractions tests/MpvShell.Player.Abstractions.Tests
+git add MpvShell.slnx Directory.Build.props src/MpvShell.Player.Abstractions tests/MpvShell.Player.Abstractions.Tests
 git commit -m "feat: scaffold player abstractions"
 ```
 
@@ -305,8 +305,8 @@ Run:
 ```bash
 dotnet new classlib -n MpvShell.Player.MpvSidecar -o src/MpvShell.Player.MpvSidecar
 dotnet new xunit -n MpvShell.Player.MpvSidecar.Tests -o tests/MpvShell.Player.MpvSidecar.Tests
-dotnet sln MpvShell.sln add src/MpvShell.Player.MpvSidecar/MpvShell.Player.MpvSidecar.csproj
-dotnet sln MpvShell.sln add tests/MpvShell.Player.MpvSidecar.Tests/MpvShell.Player.MpvSidecar.Tests.csproj
+dotnet sln MpvShell.slnx add src/MpvShell.Player.MpvSidecar/MpvShell.Player.MpvSidecar.csproj
+dotnet sln MpvShell.slnx add tests/MpvShell.Player.MpvSidecar.Tests/MpvShell.Player.MpvSidecar.Tests.csproj
 dotnet add src/MpvShell.Player.MpvSidecar/MpvShell.Player.MpvSidecar.csproj reference src/MpvShell.Player.Abstractions/MpvShell.Player.Abstractions.csproj
 dotnet add tests/MpvShell.Player.MpvSidecar.Tests/MpvShell.Player.MpvSidecar.Tests.csproj reference src/MpvShell.Player.MpvSidecar/MpvShell.Player.MpvSidecar.csproj
 dotnet add tests/MpvShell.Player.MpvSidecar.Tests/MpvShell.Player.MpvSidecar.Tests.csproj package FluentAssertions
@@ -567,7 +567,7 @@ Expected: PASS
 Run:
 
 ```bash
-dotnet build MpvShell.sln -v minimal
+dotnet build MpvShell.slnx -v minimal
 ```
 
 Expected: BUILD SUCCEEDED
@@ -617,8 +617,8 @@ Run:
 ```bash
 dotnet new classlib -n MpvShell.Interop.VideoHost -o src/MpvShell.Interop.VideoHost
 dotnet new xunit -n MpvShell.Interop.VideoHost.Tests -o tests/MpvShell.Interop.VideoHost.Tests
-dotnet sln MpvShell.sln add src/MpvShell.Interop.VideoHost/MpvShell.Interop.VideoHost.csproj
-dotnet sln MpvShell.sln add tests/MpvShell.Interop.VideoHost.Tests/MpvShell.Interop.VideoHost.Tests.csproj
+dotnet sln MpvShell.slnx add src/MpvShell.Interop.VideoHost/MpvShell.Interop.VideoHost.csproj
+dotnet sln MpvShell.slnx add tests/MpvShell.Interop.VideoHost.Tests/MpvShell.Interop.VideoHost.Tests.csproj
 dotnet add tests/MpvShell.Interop.VideoHost.Tests/MpvShell.Interop.VideoHost.Tests.csproj reference src/MpvShell.Interop.VideoHost/MpvShell.Interop.VideoHost.csproj
 dotnet add tests/MpvShell.Interop.VideoHost.Tests/MpvShell.Interop.VideoHost.Tests.csproj package FluentAssertions
 dotnet test tests/MpvShell.Interop.VideoHost.Tests/MpvShell.Interop.VideoHost.Tests.csproj -v minimal
@@ -685,7 +685,7 @@ Expected: PASS
 Run:
 
 ```bash
-dotnet build MpvShell.sln -v minimal
+dotnet build MpvShell.slnx -v minimal
 ```
 
 Expected: BUILD SUCCEEDED
@@ -746,8 +746,8 @@ Run:
 ```bash
 dotnet new winui3 -n MpvShell.App -o src/MpvShell.App
 dotnet new xunit -n MpvShell.App.Tests -o tests/MpvShell.App.Tests
-dotnet sln MpvShell.sln add src/MpvShell.App/MpvShell.App.csproj
-dotnet sln MpvShell.sln add tests/MpvShell.App.Tests/MpvShell.App.Tests.csproj
+dotnet sln MpvShell.slnx add src/MpvShell.App/MpvShell.App.csproj
+dotnet sln MpvShell.slnx add tests/MpvShell.App.Tests/MpvShell.App.Tests.csproj
 dotnet add src/MpvShell.App/MpvShell.App.csproj reference src/MpvShell.Player.Abstractions/MpvShell.Player.Abstractions.csproj
 dotnet add src/MpvShell.App/MpvShell.App.csproj reference src/MpvShell.Player.MpvSidecar/MpvShell.Player.MpvSidecar.csproj
 dotnet add src/MpvShell.App/MpvShell.App.csproj reference src/MpvShell.Interop.VideoHost/MpvShell.Interop.VideoHost.csproj
@@ -1056,7 +1056,7 @@ Expected: PASS
 Run:
 
 ```bash
-dotnet build MpvShell.sln -v minimal
+dotnet build MpvShell.slnx -v minimal
 dotnet run --project src/MpvShell.App/MpvShell.App.csproj
 ```
 
@@ -1477,7 +1477,7 @@ Run:
 
 ```bash
 dotnet test tests/MpvShell.App.Tests/MpvShell.App.Tests.csproj -v minimal --filter "RecentUrlStoreTests|InfoPanelViewModelTests"
-dotnet build MpvShell.sln -v minimal
+dotnet build MpvShell.slnx -v minimal
 ```
 
 Expected: PASS / BUILD SUCCEEDED
@@ -1635,8 +1635,8 @@ private async Task OpenUrlAsync()
 Run:
 
 ```bash
-dotnet test MpvShell.sln -v minimal
-dotnet build MpvShell.sln -v minimal
+dotnet test MpvShell.slnx -v minimal
+dotnet build MpvShell.slnx -v minimal
 ```
 
 Expected: 所有测试 PASS，且 BUILD SUCCEEDED
