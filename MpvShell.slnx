@@ -1,14 +1,19 @@
 <Solution>
   <Folder Name="/src/">
-    <Project Path="src/MpvShell.App/MpvShell.App.csproj" />
-    <Project Path="src/MpvShell.Interop.VideoHost/MpvShell.Interop.VideoHost.csproj" />
-    <Project Path="src/MpvShell.Player.Abstractions/MpvShell.Player.Abstractions.csproj" />
-    <Project Path="src/MpvShell.Player.MpvSidecar/MpvShell.Player.MpvSidecar.csproj" />
+    <Project Path="../../../../../../source/repos/mpv-winui/src/MpvShell.App/MpvShell.App.csproj" />
+    <Project Path="../../../../../../source/repos/mpv-winui/src/MpvShell.Interop.VideoHost/MpvShell.Interop.VideoHost.csproj" />
+    <Project Path="../../../../../../source/repos/mpv-winui/src/MpvShell.Player.Abstractions/MpvShell.Player.Abstractions.csproj" />
+    <Project Path="../../../../../../source/repos/mpv-winui/src/MpvShell.Player.MpvSidecar/MpvShell.Player.MpvSidecar.csproj" />
   </Folder>
   <Folder Name="/tests/">
-    <Project Path="tests/MpvShell.App.Tests/MpvShell.App.Tests.csproj" />
-    <Project Path="tests/MpvShell.Interop.VideoHost.Tests/MpvShell.Interop.VideoHost.Tests.csproj" />
-    <Project Path="tests/MpvShell.Player.Abstractions.Tests/MpvShell.Player.Abstractions.Tests.csproj" />
-    <Project Path="tests/MpvShell.Player.MpvSidecar.Tests/MpvShell.Player.MpvSidecar.Tests.csproj" />
+    <Project Path="../../../../../../source/repos/mpv-winui/tests/MpvShell.App.Tests/MpvShell.App.Tests.csproj" />
+    <Project Path="../../../../../../source/repos/mpv-winui/tests/MpvShell.Interop.VideoHost.Tests/MpvShell.Interop.VideoHost.Tests.csproj" />
+    <Project Path="../../../../../../source/repos/mpv-winui/tests/MpvShell.Player.Abstractions.Tests/MpvShell.Player.Abstractions.Tests.csproj" />
+    <Project Path="../../../../../../source/repos/mpv-winui/tests/MpvShell.Player.MpvSidecar.Tests/MpvShell.Player.MpvSidecar.Tests.csproj" />
+  </Folder>
+  <Folder Name="/解决方案项/">
+    <File Path="docs/manual-test-checklist.md" />
+    <File Path="docs/superpowers/plans/2026-04-07-winui3-mpv-player-shell-v1.md" />
+    <File Path="docs/superpowers/specs/2026-04-07-winui3-mpv-player-shell-design.md" />
   </Folder>
 </Solution>
