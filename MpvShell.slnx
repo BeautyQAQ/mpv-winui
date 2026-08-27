@@ -12,8 +12,6 @@
     <Project Path="../../../../../../source/repos/mpv-winui/tests/MpvShell.Player.MpvSidecar.Tests/MpvShell.Player.MpvSidecar.Tests.csproj" />
   </Folder>
   <Folder Name="/解决方案项/">
-    <File Path="docs/manual-test-checklist.md" />
-    <File Path="docs/superpowers/plans/2026-04-07-winui3-mpv-player-shell-v1.md" />
-    <File Path="docs/superpowers/specs/2026-04-07-winui3-mpv-player-shell-design.md" />
+    <File Path="docs/architecture.md" />
   </Folder>
 </Solution>
