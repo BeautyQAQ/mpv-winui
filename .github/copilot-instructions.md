@@ -58,6 +58,12 @@ tests/
 7. **交互逻辑集中**：手势冲突、浮层优先级、seek/音量节流等逻辑放在协调服务中，不散落在 XAML code-behind。
 8. **Phase 0 优先**：在 libmpv 控制、SDR 渲染、XAML 覆盖输入、4K HDR 与硬件解码全部通过前，不堆叠完整产品 UI。不得用 UI 假数据、CPU 逐帧拷贝或外部 mpv 进程绕过失败项。
 
+## 文件编码（必须遵守）
+
+- 仓库中的所有文本文件统一使用 **UTF-8（无 BOM）**；修改文件时必须保留 UTF-8，禁止使用 ANSI、GBK、系统默认代码页或 `Encoding.Default` 读写。
+- `mpv-winui.slnx` 是 XML 文件且未声明其他编码，因此必须始终保存为 UTF-8。不得用默认编码的 PowerShell、脚本或重定向命令重写该文件；写入中文“解决方案项”等内容时尤其要显式指定 UTF-8。
+- 修改 `.slnx` 后必须运行 `dotnet sln mpv-winui.slnx list`，确认文件可被严格解析；涉及项目结构时还须运行解决方案构建。若出现乱码、替换字符 `�` 或 `Invalid character in the given encoding`，不得提交或继续操作，必须先恢复正确的 UTF-8 内容。
+
 ## 编码约定
 
 - 异步方法以 `Async` 结尾，所有可取消的公共方法接受 `CancellationToken`。
