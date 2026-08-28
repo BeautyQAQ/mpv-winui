@@ -1,7 +1,7 @@
 # Phase 0 实施进度
 
-> 总体状态：进行中（P0-00 已完成）  
-> 当前工作包：无（P0-00 已完成，下一工作包 P0-01 可启动）  
+> 总体状态：进行中（P0-00、P0-01 已完成）
+> 当前工作包：无（P0-01 已完成；P0-06 可启动，P0-02 等待 EXT-03）
 > 最后更新：2026-08-28  
 > 架构基线：`docs/architecture.md` v1.1  
 > 执行计划：`docs/implementation/phase-0-plan.md`
@@ -28,15 +28,17 @@
 - SDK：.NET SDK `10.0.400`（MSBuild 18.9.6，运行时 Microsoft.NETCore.App 10.0.11 / Microsoft.WindowsDesktop.App 10.0.11）
 - 开发机（x64 开发机确认）：Windows 11 专业版 10.0.26200，x64，主 GPU NVIDIA GeForce GTX 1060 5GB（驱动 32.0.15.8180，2025-10-29）
 - HDR 验证机：未确认（见 EXT-07）
-- 生产项目：4 个，当前为 App、Abstractions、Sidecar、VideoHost
-- 测试项目：4 个
-- 默认配置构建：通过，0 警告、0 错误（2026-08-28 P0-00 复核确认）
-- 默认配置测试：通过 21 个（2026-08-28 P0-00 复核确认）
-  - `MpvShell.Player.Abstractions.Tests`：1
-  - `MpvShell.Player.MpvSidecar.Tests`：3
+- 目标生产项目：App、Abstractions、LibMpv、Rendering.WinUI 共 4 个；过渡期 Sidecar、VideoHost 继续保留
+- 目标测试项目：对应目标生产项目共 4 个；过渡期旧项目测试继续保留
+- 默认配置构建：通过，0 警告、0 错误（2026-08-28 P0-01 复核确认）
+- 默认配置测试：通过 33 个（2026-08-28 P0-01 复核确认）
+  - `MpvShell.Player.Abstractions.Tests`：2
+  - `MpvShell.Player.LibMpv.Tests`：2
+  - `MpvShell.Rendering.WinUI.Tests`：7
+  - `MpvShell.Player.MpvSidecar.Tests`：5
   - `MpvShell.Interop.VideoHost.Tests`：1
   - `MpvShell.App.Tests`：16
-- x64 显式配置：失败；`mpv-winui.slnx` 尚未声明有效的 `Debug|x64` 解决方案配置
+- x64 显式配置：通过；解决方案与项目均固定 `Platform=x64`、`PlatformTarget=x64`
 - 原生运行时资产：尚未加入仓库
 - libmpv 控制、Render API、ANGLE/D3D11、4K 和 HDR：均未实施、未验证
 
@@ -47,20 +49,20 @@ dotnet build mpv-winui.slnx --no-restore
 dotnet test mpv-winui.slnx --no-build --no-restore
 ```
 
-已知失败命令（待 P0-01 修复）：
+P0-01 前的已知失败命令（历史记录，现已修复）：
 
 ```powershell
 dotnet build mpv-winui.slnx -p:Platform=x64 --no-restore
 ```
 
-失败摘要：解决方案配置 `Debug|x64` 无效。
+历史失败摘要：解决方案配置 `Debug|x64` 无效；P0-01 已增加 x64 配置并验证通过。
 
 ## 3. 工作包状态
 
 | 工作包 | 状态 | 负责人/Agent | 开始 | 完成 | 提交 | 备注 |
 |---|---|---|---|---|---|---|
 | P0-00 基线与输入确认 | 通过 | Copilot Agent | 2026-08-28 | 2026-08-28 | b2f4ccf |
-| P0-01 目标项目骨架和抽象边界 | 未开始 |  |  |  |  | 需修复 x64 解决方案配置 |
+| P0-01 目标项目骨架和抽象边界 | 通过 | Codex | 2026-08-28 | 2026-08-28 | 待回填 | 目标项目、x64 配置和无 HWND 抽象均已验证 |
 | P0-02 原生依赖与确定性加载 | 未开始 |  |  |  |  | 依赖 mpv/ANGLE 来源确认 |
 | P0-03 libmpv C ABI 互操作层 | 未开始 |  |  |  |  | 依赖固定头文件 |
 | P0-04 会话生命周期 | 未开始 |  |  |  |  |  |
@@ -110,6 +112,12 @@ dotnet build mpv-winui.slnx -p:Platform=x64 --no-restore
 | 2026-08-28 | P0-00 | 同上 | `dotnet build mpv-winui.slnx --no-restore` | 通过：0 警告、0 错误 | `docs/implementation/evidence/P0-00-01-baseline-verification.md` | 基线复核 |
 | 2026-08-28 | P0-00 | 同上 | `dotnet test mpv-winui.slnx --no-build --no-restore` | 通过：21/21（Abstractions 1、MpvSidecar 3、VideoHost 1、App 16） | `docs/implementation/evidence/P0-00-01-baseline-verification.md` | 基线复核 |
 | 2026-08-28 | P0-00 | 同上 | 全仓扫描 `runtimes/` 目录与 `*.dll/lib/a` 文件（排除 bin/obj） | 通过：仓库中不存在任何原生二进制资产 | `docs/implementation/evidence/P0-00-01-baseline-verification.md` | 确认无来源不明 DLL |
+| 2026-08-28 | P0-01 | .NET SDK 10.0.400，x64 | `dotnet sln mpv-winui.slnx list` | 通过：目标 4 个生产项目与 4 个目标测试项目均存在；旧项目按计划暂留 | `docs/implementation/evidence/P0-01-01-project-boundaries.md` | 项目骨架 |
+| 2026-08-28 | P0-01 | 同上 | `dotnet build mpv-winui.slnx -p:Platform=x64 --no-restore` | 通过：12 个项目，0 警告、0 错误 | `docs/implementation/evidence/P0-01-01-project-boundaries.md` | 显式 x64 |
+| 2026-08-28 | P0-01 | 同上 | 新增 Abstractions 架构守卫后的首次 x64 构建 | 失败：测试谓词触发 `CS8122`；改为 LINQ 过滤后重试通过 | `docs/implementation/evidence/P0-01-01-project-boundaries.md` | 保留失败历史 |
+| 2026-08-28 | P0-01 | 同上 | `dotnet test mpv-winui.slnx -p:Platform=x64 --no-build --no-restore` | 通过：33/33 | `docs/implementation/evidence/P0-01-01-project-boundaries.md` | 显式 x64 |
+| 2026-08-28 | P0-01 | 同上 | 默认配置 build/test | 通过：0 警告、0 错误；33/33 | `docs/implementation/evidence/P0-01-01-project-boundaries.md` | 默认配置解析为 x64 |
+| 2026-08-28 | P0-01 | 同上 | 边界扫描 `hostHandle|HWND|MpvSidecar|VideoHost` | 通过：Abstractions、LibMpv、Rendering.WinUI 无匹配 | `docs/implementation/evidence/P0-01-01-project-boundaries.md` | 无旧边界泄漏 |
 
 ## 7. 技术决策记录
 
@@ -126,7 +134,7 @@ dotnet build mpv-winui.slnx -p:Platform=x64 --no-restore
 
 | 编号 | 日期 | 工作包 | 风险/异常 | 影响 | 处理状态 | 结论 |
 |---|---|---|---|---|---|---|
-| RISK-01 | 2026-08-28 | P0-01 | `.slnx` 缺少有效 `Debug|x64` 配置 | 文档规定的 x64 命令不可用 | 待处理 | P0-01 修复并补回归验证 |
+| RISK-01 | 2026-08-28 | P0-01 | `.slnx` 缺少有效 `Debug|x64` 配置 | 文档规定的 x64 命令不可用 | 已解决 | P0-01 增加 x64 平台；实际属性、构建和测试均验证通过 |
 
 ## 9. 人工验证记录格式
 
@@ -151,6 +159,7 @@ dotnet build mpv-winui.slnx -p:Platform=x64 --no-restore
 | 记录文件 | 工作包 | 日期 | 结论 |
 |---|---|---|---|
 | `P0-00-01-baseline-verification.md` | P0-00 | 2026-08-28 | 通过 |
+| `P0-01-01-project-boundaries.md` | P0-01 | 2026-08-28 | 通过 |
 
 ## 10. 更新规则
 

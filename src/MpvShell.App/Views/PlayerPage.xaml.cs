@@ -4,6 +4,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using MpvShell.App.ViewModels;
+using MpvShell.Player.MpvSidecar;
 using Windows.Foundation;
 using WinRT.Interop;
 
@@ -14,12 +15,14 @@ public sealed partial class PlayerPage : Page
     private DispatcherQueueTimer? _autoHideTimer;
     private Point? _dragStartPoint;
     private bool _initializeRequested;
+    private readonly LegacyMpvHost _legacyHost;
     public PlayerViewModel ViewModel { get; }
 
     public PlayerPage()
     {
         InitializeComponent();
         ViewModel = ((App)Application.Current).Services.GetRequiredService<PlayerViewModel>();
+        _legacyHost = ((App)Application.Current).Services.GetRequiredService<LegacyMpvHost>();
         DataContext = ViewModel;
     }
 
@@ -37,8 +40,8 @@ public sealed partial class PlayerPage : Page
             return;
         }
 
-        var hostHandle = WindowNative.GetWindowHandle(app.MainWindowInstance);
-        await ViewModel.InitializeAsync(hostHandle);
+        _legacyHost.Attach(WindowNative.GetWindowHandle(app.MainWindowInstance));
+        await ViewModel.InitializeAsync();
         EnsureAutoHideTimer();
         RestartAutoHideTimer();
     }

@@ -28,7 +28,7 @@ public sealed class ErrorPresentationTests
     {
         var vm = new PlayerViewModel(new FaultEventBackend(), new PlaybackInteractionCoordinator());
 
-        await vm.InitializeAsync((nint)1234);
+        await vm.InitializeAsync();
 
         await AssertEventuallyAsync(
             () => vm.ErrorMessage,
@@ -62,7 +62,7 @@ public sealed class ErrorPresentationTests
     {
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
-        public Task InitializeAsync(nint hostHandle, CancellationToken cancellationToken) => Task.CompletedTask;
+        public Task InitializeAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 
         public Task LoadUrlAsync(string url, CancellationToken cancellationToken) =>
             throw new InvalidOperationException("无法连接到 mpv IPC");
@@ -101,7 +101,7 @@ public sealed class ErrorPresentationTests
     {
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
-        public Task InitializeAsync(nint hostHandle, CancellationToken cancellationToken) => Task.CompletedTask;
+        public Task InitializeAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 
         public Task LoadUrlAsync(string url, CancellationToken cancellationToken) => Task.CompletedTask;
 

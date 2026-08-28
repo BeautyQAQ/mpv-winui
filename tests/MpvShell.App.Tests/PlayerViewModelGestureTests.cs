@@ -51,7 +51,7 @@ public sealed class PlayerViewModelGestureTests
 
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
-        public Task InitializeAsync(nint hostHandle, CancellationToken cancellationToken) => Task.CompletedTask;
+        public Task InitializeAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 
         public Task LoadUrlAsync(string url, CancellationToken cancellationToken) => Task.CompletedTask;
 

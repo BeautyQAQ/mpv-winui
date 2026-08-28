@@ -5,7 +5,7 @@ namespace MpvShell.Player.Abstractions;
 
 public interface IPlayerBackend : IAsyncDisposable
 {
-    Task InitializeAsync(nint hostHandle, CancellationToken cancellationToken);
+    Task InitializeAsync(CancellationToken cancellationToken);
     Task LoadUrlAsync(string url, CancellationToken cancellationToken);
     Task PlayAsync(CancellationToken cancellationToken);
     Task PauseAsync(CancellationToken cancellationToken);

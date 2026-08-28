@@ -16,6 +16,8 @@
   <ItemGroup>
     <ProjectReference Include="..\MpvShell.Interop.VideoHost\MpvShell.Interop.VideoHost.csproj" />
     <ProjectReference Include="..\MpvShell.Player.Abstractions\MpvShell.Player.Abstractions.csproj" />
+    <ProjectReference Include="..\MpvShell.Player.LibMpv\MpvShell.Player.LibMpv.csproj" />
     <ProjectReference Include="..\MpvShell.Player.MpvSidecar\MpvShell.Player.MpvSidecar.csproj" />
+    <ProjectReference Include="..\MpvShell.Rendering.WinUI\MpvShell.Rendering.WinUI.csproj" />
   </ItemGroup>
 </Project>

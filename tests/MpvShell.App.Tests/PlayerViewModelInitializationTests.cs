@@ -11,30 +11,26 @@ namespace MpvShell.App.Tests;
 public sealed class PlayerViewModelInitializationTests
 {
     [Fact]
-    public async Task Initialize_should_forward_host_handle_to_backend_once()
+    public async Task Initialize_should_initialize_backend_once()
     {
         var backend = new RecordingBackend();
         var vm = new PlayerViewModel(backend, new PlaybackInteractionCoordinator());
 
-        await vm.InitializeAsync((nint)1234);
-        await vm.InitializeAsync((nint)5678);
+        await vm.InitializeAsync();
+        await vm.InitializeAsync();
 
         backend.InitializeCalls.Should().Be(1);
-        backend.LastHostHandle.Should().Be((nint)1234);
     }
 
     private sealed class RecordingBackend : IPlayerBackend
     {
         public int InitializeCalls { get; private set; }
 
-        public nint LastHostHandle { get; private set; }
-
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
-        public Task InitializeAsync(nint hostHandle, CancellationToken cancellationToken)
+        public Task InitializeAsync(CancellationToken cancellationToken)
         {
             InitializeCalls++;
-            LastHostHandle = hostHandle;
             return Task.CompletedTask;
         }
 

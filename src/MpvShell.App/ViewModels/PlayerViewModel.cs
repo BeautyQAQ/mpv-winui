@@ -108,16 +108,16 @@ public partial class PlayerViewModel : ObservableObject
     public Visibility ErrorVisibility =>
         string.IsNullOrWhiteSpace(ErrorMessage) ? Visibility.Collapsed : Visibility.Visible;
 
-    public async Task InitializeAsync(nint hostHandle)
+    public async Task InitializeAsync()
     {
-        if (_isInitialized || hostHandle == 0)
+        if (_isInitialized)
         {
             return;
         }
 
         try
         {
-            await _backend.InitializeAsync(hostHandle, CancellationToken.None);
+            await _backend.InitializeAsync(CancellationToken.None);
             _isInitialized = true;
             StartEventPump();
             ErrorMessage = null;

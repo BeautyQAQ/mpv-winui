@@ -8,17 +8,23 @@ namespace MpvShell.Player.MpvSidecar;
 
 public sealed class MpvSidecarBackend : IPlayerBackend
 {
+    private readonly LegacyMpvHost _legacyHost;
     private readonly MpvProcessManager _processManager = new();
     private readonly MpvJsonIpcClient _ipcClient = new();
     private Process? _mpvProcess;
     private PlaybackState _state = PlaybackState.Initial;
 
-    public async Task InitializeAsync(nint hostHandle, CancellationToken cancellationToken)
+    public MpvSidecarBackend(LegacyMpvHost legacyHost)
+    {
+        _legacyHost = legacyHost;
+    }
+
+    public async Task InitializeAsync(CancellationToken cancellationToken)
     {
         try
         {
             var pipeName = $"mpvshell-{Environment.ProcessId}";
-            var options = new MpvLaunchOptions("mpv.exe", pipeName, hostHandle);
+            var options = new MpvLaunchOptions("mpv.exe", pipeName, _legacyHost.GetRequiredHandle());
 
             _mpvProcess = _processManager.Start(options);
             await _ipcClient.ConnectAsync(pipeName, cancellationToken);

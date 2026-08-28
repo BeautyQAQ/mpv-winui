@@ -18,6 +18,7 @@ public partial class App : Application
         InitializeComponent();
 
         var services = new ServiceCollection();
+        services.AddSingleton<LegacyMpvHost>();
         services.AddSingleton<IPlayerBackend, MpvSidecarBackend>();
         services.AddSingleton<PlaybackInteractionCoordinator>();
         services.AddSingleton<GestureDecisionEngine>();
