@@ -1,16 +1,19 @@
 # Copilot 项目指令
 
-本项目是 **MpvShell**：基于 WinUI 3 + mpv 的 Windows 播放器壳层（详见 `docs/superpowers/specs/2026-04-07-winui3-mpv-player-shell-design.md`）。目标是保留 mpv 的高清/HDR 播放能力，同时提供现代化的触屏与桌面交互。
+本仓库是 **mpv-winui**，应用项目当前使用 `MpvShell` 命名空间。它是仅面向 Windows 的 WinUI 3 播放器，以 libmpv 提供媒体处理和视频渲染能力，以 WinUI 3 提供触屏、键鼠、OSD 和信息界面。
+
+`docs/architecture.md` 是技术选型、模块边界和实施顺序的唯一架构基线。代码与本文冲突时，以该文档为准；不要根据仓库中的遗留实现推断正式架构。
 
 ## 语言与沟通
 
 - 文档、注释、提交说明、异常消息均使用**中文**（代码中已有中文注释和中文异常消息，保持一致）。
 - 代码标识符（类名、方法名等）保持英文。
 
-## 思考深度分级
+## 工作方式
 
-- 针对复杂逻辑请使用详细的 step-by-step 深度思考推导。
-- 简单代码补全和解释请直接给出精简答案，无需长篇思考过程。
+- 复杂改动先核对 `docs/architecture.md`，说明结论、关键依据、风险和验证结果。
+- 简单修改直接给出精简结果，不展开无关过程。
+- 不确定的原生 API、线程约束或资源所有权必须先查证，再实现。
 
 ## 技术栈
 
@@ -19,60 +22,72 @@
 - **MVVM**：CommunityToolkit.Mvvm（8.4.0）。
 - **DI**：Microsoft.Extensions.DependencyInjection，在 `App` 构造函数中注册。
 - **测试**：xUnit + FluentAssertions，断言统一使用 FluentAssertions 的 `Should()` 风格。
+- **首发架构**：仅支持 x64；不得擅自增加 x86 或 ARM64 发布目标。
 
 ## 解决方案结构
 
-解决方案文件为 `MpvShell.slnx`（slnx 格式，不是 .sln）。
+唯一解决方案文件为 `mpv-winui.slnx`（`.slnx` 格式，不是 `.sln`）。所有构建、测试和项目增删都以该文件为入口。
+
+正式目标结构如下：
 
 ```
 src/
   MpvShell.App                    # WinUI 3 表现层（ViewModels / Views / Services）
-  MpvShell.Interop.VideoHost      # 原生互操作层（VideoHostControl、P/Invoke、窗口句柄/边界转换）
   MpvShell.Player.Abstractions    # 播放器抽象层（IPlayerBackend、事件、统一状态模型）
-  MpvShell.Player.MpvSidecar      # V1 后端：mpv.exe Sidecar + JSON IPC
+  MpvShell.Player.LibMpv          # libmpv 会话、命令、属性、事件和 C API 互操作
+  MpvShell.Rendering.WinUI        # SwapChainPanel、D3D11、ANGLE/EGL 和渲染线程
 tests/
   MpvShell.App.Tests
-  MpvShell.Interop.VideoHost.Tests
   MpvShell.Player.Abstractions.Tests
-  MpvShell.Player.MpvSidecar.Tests
+  MpvShell.Player.LibMpv.Tests
+  MpvShell.Rendering.WinUI.Tests
 ```
 
-依赖方向：`App → MpvSidecar → Abstractions`；`App → Interop.VideoHost`。Abstractions 不依赖任何其他项目。
+依赖方向：`App → Player.Abstractions`、`App → Rendering.WinUI`、`Player.LibMpv → Player.Abstractions`，且控制后端与渲染器共享同一份 mpv core。`Player.Abstractions` 不得引用 WinUI、ANGLE、D3D11 或 libmpv。
+
+仓库当前仍可能存在 `MpvShell.Player.MpvSidecar`、`MpvShell.Interop.VideoHost` 及其测试。这些是待迁移的旧路线，不是新功能的落点，不得继续扩展；完成对应替代后再安全移除。
 
 ## 架构规则（必须遵守）
 
-1. **可替换后端设计**：前端和交互协调层只能通过 `IPlayerBackend`（`Player.Abstractions`）访问播放器，禁止在 UI 或协调层直接引用 `MpvSidecarBackend`（DI 注册除外）。这是为未来切换到 `libmpv` 预留的路径。
-2. **状态统一**：Abstractions 层返回应用自己的状态模型（`PlaybackState`、`InfoPanelSnapshot`、`TrackInfo`、`PlayerEvent`），不要把 mpv 原始 IPC 数据直接暴露给前端。
-3. **交互逻辑集中**：手势冲突、浮层显隐/优先级、seek/音量节流等逻辑放在 `PlaybackInteractionCoordinator` / `GestureDecisionEngine` 等 Services 中，不要散落在 XAML code-behind 或 View 里。
-4. **code-behind 保持轻薄**：XAML code-behind 只做初始化与事件转发，业务逻辑放 ViewModel/Services。
+1. **固定播放路线**：使用进程内 `libmpv`、C Client API 和 Render API。禁止启动外部 `mpv.exe`、使用命名管道 JSON IPC、以 `--wid` 子窗口承载最终视频，或同时维护 Sidecar 与 libmpv 两套正式后端。
+2. **抽象边界**：前端和交互协调层只能通过 `IPlayerBackend` 访问播放控制；UI 不接触 mpv 原生句柄。视频表面由独立渲染接口管理，`IPlayerBackend` 不接收裸 `HWND`。
+3. **状态统一**：Abstractions 层返回应用自己的强类型状态与事件，不把 mpv 原始属性名、结构体或指针暴露给 UI。
+4. **渲染链路**：使用 libmpv Render API，经 ANGLE/EGL 接入 D3D11 Composition SwapChain，并由 WinUI 3 `SwapChainPanel` 承载。XAML 视频层之上必须能稳定叠加交互控件。
+5. **线程边界**：固定 UI、mpv 事件/命令、渲染三个逻辑执行域。回调只发送轻量唤醒信号；禁止同步循环等待。EGL/OpenGL 上下文由渲染线程独占，`SetSwapChain` 在 UI 线程调用。
+6. **资源所有权**：render context 必须先于 mpv core 释放。原生资源使用 `SafeHandle` 或明确所有权对象；回调注销前必须保持委托或函数指针有效，托管异常不得跨越原生 ABI。
+7. **交互逻辑集中**：手势冲突、浮层优先级、seek/音量节流等逻辑放在协调服务中，不散落在 XAML code-behind。
+8. **Phase 0 优先**：在 libmpv 控制、SDR 渲染、XAML 覆盖输入、4K HDR 与硬件解码全部通过前，不堆叠完整产品 UI。不得用 UI 假数据、CPU 逐帧拷贝或外部 mpv 进程绕过失败项。
 
 ## 编码约定
 
 - 异步方法以 `Async` 结尾，所有可取消的公共方法接受 `CancellationToken`。
-- 失败路径抛出 `InvalidOperationException` 等异常并在 `catch (Exception ex)` 中包装原始异常（`throw new InvalidOperationException("初始化 mpv 后端失败", ex)` 风格），消息使用中文。
-- 后端/管理器类使用 `sealed`，优先实现 `IAsyncDisposable` 管理进程/IPC 资源。
-- 进程、句柄、IPC 连接等资源的获取与清理必须成对出现（参考 `MpvProcessManager` / `MpvJsonIpcClient` 的做法）。
-- 不要在代码中硬编码管道名、可执行文件名等运行时参数，走 `MpvLaunchOptions` 这类配置载体。
+- 失败路径保留原始异常作为内部异常，用户可见消息使用中文，并区分加载、播放、渲染和不可恢复初始化错误。
+- 后端、会话和资源所有权类型优先使用 `sealed`，按实际生命周期实现 `IDisposable` 或 `IAsyncDisposable`。
+- 固定原生入口优先使用源生成的 `LibraryImport`；仅在不适用时使用 `DllImport`。显式处理 UTF-8、结构体布局、调用约定、指针宽度和非托管内存释放。
+- 使用稳定逻辑库名和 `NativeLibrary.SetDllImportResolver` 从固定 RID 目录加载经过哈希校验的 DLL；不得修改进程级 DLL 搜索路径，也不得从当前工作目录或 `PATH` 隐式加载。
+- libmpv 命令使用结构化参数和异步 API，不拼接命令字符串。每个请求使用唯一 `reply_userdata` 关联回复、错误和超时。
+- 默认不加载用户 mpv 配置、脚本、插件或 ytdl；URL 只允许 `http`/`https`，不得进入 shell 或命令行，日志必须对查询参数和令牌脱敏。
 
 ## 测试约定
 
-- 每个 `src` 项目对应一个 `tests` 项目，测试类名以被测对象命名 + `Tests` 后缀（如 `MpvCommandFactoryTests`）。
+- 每个 `src` 项目对应一个 `tests` 项目，测试类名以被测对象命名并加 `Tests` 后缀。
 - 新增/修改 Services、ViewModels、后端解析器等逻辑时，同步补充或更新对应测试。
 - 断言用 FluentAssertions（`Should()`），不混用 `Assert`。
 - 纯逻辑（命令构造、事件解析、手势决策、URL 历史等）优先做成可独立于 WinUI 运行时测试的形式。
+- 原生边界必须覆盖 ABI 布局、枚举值、UTF-8、回调寿命、错误码、异步请求关联和重复释放；发布产物必须执行 x64 DLL 加载、会话创建与销毁烟雾测试。
+- 渲染测试至少覆盖初始化、resize、DPI、关闭和设备重建；HDR 与硬件解码结论必须来自真实硬件验证，不能只根据配置名称或单元测试判断。
 
 ## 运行与构建
 
-- 构建：`dotnet build MpvShell.slnx`
-- 测试：`dotnet test MpvShell.slnx`
-- 发布配置见 `Properties/PublishProfiles/`（win-x64 / win-arm64 / win-x86）。
+- 查看项目：`dotnet sln mpv-winui.slnx list`
+- 构建：`dotnet build mpv-winui.slnx -p:Platform=x64`
+- 测试：`dotnet test mpv-winui.slnx -p:Platform=x64`
+- V1 只生成和验证 `win-x64` 发布产物。原生依赖固定版本、架构和 SHA-256，不使用浮动版本或运行时在线下载。
 
 ## 参考文档
 
-- 设计文档：`docs/superpowers/specs/2026-04-07-winui3-mpv-player-shell-design.md`（范围内外、7 项最高优先级交互需求、四层架构说明）
-- 实施计划：`docs/superpowers/plans/2026-04-07-winui3-mpv-player-shell-v1.md`
-- 手动测试清单：`docs/manual-test-checklist.md`
+- 架构、范围、实施路线与验收标准：`docs/architecture.md`
 
 ## 范围提醒（避免过度实现）
 
-V1 不做：媒体库、元数据刮削、DRM、浏览器认证、跨设备同步、亮度手势。实现功能前先对照设计文档的"范围内/范围外"清单。
+V1 不做：媒体库、刮削和海报墙、商业 DRM、浏览器认证与 Cookie 管理界面、跨设备同步、在线脚本市场、多播放内核切换，以及运行时在线下载或替换 libmpv。实现功能前先核对 `docs/architecture.md` 的产品范围和当前 Phase。
