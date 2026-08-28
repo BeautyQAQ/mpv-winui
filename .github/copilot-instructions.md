@@ -14,8 +14,8 @@
 
 ## 技术栈
 
-- **运行时**：.NET 8，`ImplicitUsings` + `Nullable` 均开启（见 `Directory.Build.props`）。
-- **UI**：WinUI 3 / Windows App SDK（`net8.0-windows10.0.19041.0`，最低平台 `10.0.17763.0`），`UseWinUI`。
+- **运行时**：.NET 10 LTS，`ImplicitUsings` + `Nullable` 均开启（见 `Directory.Build.props`）。
+- **UI**：WinUI 3 / Windows App SDK 2.4.0（`net10.0-windows10.0.19041.0`，最低平台 `10.0.17763.0`），`UseWinUI`。
 - **MVVM**：CommunityToolkit.Mvvm（8.4.0）。
 - **DI**：Microsoft.Extensions.DependencyInjection，在 `App` 构造函数中注册。
 - **测试**：xUnit + FluentAssertions，断言统一使用 FluentAssertions 的 `Should()` 风格。
