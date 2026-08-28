@@ -15,8 +15,8 @@
 
 | 文件 | 逻辑库名 | 版本 | 架构 | 来源（URL/自建脚本） | 构建参数摘要 | 许可证 | 依赖闭包 | SHA-256 | 登记日期 |
 |---|---|---|---|---|---|---|---|---|---|
-| （示例）libmpv-2.dll | libmpv | v0.41.0 | x64 | 官方源码自建（脚本路径） | `--enable-libmpv --disable-console` | GPL v2+ / LGPL v2.1+ | libmpv-2.dll 及其运行依赖 | （落盘后计算） | （示例） |
-| （示例）libEGL.dll | ANGLE | （固定版本） | x64 | ANGLE 官方 release / 自建 | — | BSD 3-Clause | libEGL.dll、libGLESv2.dll 及依赖 | （落盘后计算） | （示例） |
+| （示例）libmpv-2.dll | libmpv | v0.41.0（固定 commit） | x64 | mpv 官方签名 tag 自建（脚本路径） | Meson：`-Dlibmpv=true -Ddefault_library=shared -Dcplayer=false -Dgpl=false`；完整参数由 P0-02 登记 | LGPL v2.1+ 兼容目标；须审计全部链接依赖 | libmpv-2.dll 及其运行依赖 | （落盘后计算） | （示例） |
+| （示例）libEGL.dll | ANGLE | （固定 commit） | x64 | ANGLE 官方源码自建 | GN 参数与 DEPS/CIPD 闭包由 P0-02 登记 | BSD 3-Clause；须审计随附依赖 | libEGL.dll、libGLESv2.dll 及依赖 | （落盘后计算） | （示例） |
 
 ## 3. 待登记项（随工作包补充）
 

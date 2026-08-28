@@ -85,15 +85,15 @@ dotnet build mpv-winui.slnx -p:Platform=x64 --no-restore
 
 | 编号 | 输入/阻塞项 | 状态 | 需要时间 | 负责人 | 证据或决定 |
 |---|---|---|---|---|---|
-| EXT-01 | mpv v0.41.0 x64 libmpv 构建来源、构建参数和许可证 | 阻塞：待用户确认 | P0-02 前 | 用户（决策）/ Agent（执行） | 候选决策：mpv 官方源码（mpv-v0.41.0 tag）自建 x64 构建，`--enable-libmpv`，许可证 GPL v2+ / LGPL v2.1+；确认后由 Agent 落地构建脚本并登记 SHA-256 |
-| EXT-02 | 与二进制匹配的 `client.h`、`render.h`、`render_gl.h` | 阻塞：跟随 EXT-01 | P0-03 前 | 用户（决策）/ Agent（执行） | 若采纳自建方案，头文件直接取 v0.41.0 源码树，天然匹配 |
-| EXT-03 | ANGLE x64 固定版本、来源、构建参数和许可证 | 阻塞：待用户确认 | P0-02/P0-07 前 | 用户（决策）/ Agent（执行） | 候选决策：ANGLE 官方 release（固定 tag）x64 构建，BSD 3-Clause；需确认 D3D11 后端兼容性后登记 |
-| EXT-04 | 可再生成或许可证清晰的 SDR 测试媒体 | 待确认 | P0-05 前 | 用户（决策）/ Agent（生成） | 候选方案：本地用 ffmpeg 生成可再生成的测试视频（生成脚本入库），不依赖公网素材 |
-| EXT-05 | 本地 HTTP/HLS 测试服务和固定媒体 | 待确认 | P0-05 前 | 用户（决策）/ Agent（实现） | 候选方案：本地静态服务 + ffmpeg 生成的 HLS 分段，纳入测试夹具，可重复启动 |
+| EXT-01 | mpv v0.41.0 x64 libmpv 构建来源、构建参数和许可证 | 已确认：来源策略 | P0-02 前 | Agent（执行与审计） | 使用 mpv 官方签名 tag `v0.41.0` 自建 win-x64 共享 libmpv；Meson 参数以 `-Dlibmpv=true -Ddefault_library=shared -Dcplayer=false -Dgpl=false -Dbuild-date=false` 为起点。P0-02 必须锁定完整 commit、FFmpeg/libplacebo/libass 等全部依赖版本，审计 LGPL 兼容闭包后才可落盘 |
+| EXT-02 | 与二进制匹配的 `client.h`、`render.h`、`render_gl.h` | 已确认 | P0-03 前 | Agent（执行） | 直接取最终 libmpv 构建所使用的同一 `v0.41.0` commit 源码树，并记录文件 SHA-256 |
+| EXT-03 | ANGLE x64 固定版本、来源、构建参数和许可证 | 阻塞：待精确版本审计 | P0-02/P0-07 前 | Agent | 来源策略确认为 ANGLE 官方源码自建 x64 Release；P0-02 前仍须给出完整 commit、DEPS/CIPD 闭包和 GN 参数，显式启用 D3D11、避免其他后端静默回退，并完成最小 EGL/D3D11 冒烟验证 |
+| EXT-04 | 可再生成或许可证清晰的 SDR 测试媒体 | 已确认：生成策略 | P0-05 前 | Agent（生成） | 使用固定版本 ffmpeg 生成合成 SDR 测试素材；生成脚本、参数、工具版本和素材哈希入库，不依赖公网素材，不把 ffmpeg 作为应用运行时依赖 |
+| EXT-05 | 本地 HTTP/HLS 测试服务和固定媒体 | 已确认：实现策略 | P0-05 前 | Agent（实现） | 使用仓库内可重复启动的 .NET 本地静态 HTTP 服务和 ffmpeg 生成的 HLS 分段，不依赖公网或开发机全局服务 |
 | EXT-06 | 4K HEVC Main10、AV1、HDR10 和 10-bit 渐变素材 | 阻塞：依赖 EXT-07 硬件就绪 | P0-10 前 | 用户 | 素材候选来源待硬件确认后一并确定 |
 | EXT-07 | HDR 显示器、GPU、驱动和 Windows 测试环境 | 部分确认 | P0-10 前 | 用户 | 开发机已确认：Windows 11 10.0.26200、GTX 1060 5GB、驱动 32.0.15.8180；**HDR 显示器状态未确认**，P0-10 前必须给出 HDR 验证机清单 |
 
-说明：EXT-01～EXT-05 的候选决策均为 Agent 建议，需用户确认后转为"已确认"；确认前，P0-02/P0-03/P0-05/P0-07 视为被对应输入阻塞。仓库中当前不存在任何来源不明的 DLL 或 runtimes 资产（2026-08-28 全仓扫描确认为空）。
+说明：EXT-01、EXT-02、EXT-04、EXT-05 的来源/实现策略已确认，具体构建产物仍须由对应工作包固定版本、审计许可证并登记哈希。EXT-03 在精确 commit 和构建闭包确定前继续阻塞 P0-02/P0-07。仓库中当前不存在任何来源不明的 DLL 或 runtimes 资产（2026-08-28 全仓扫描确认为空）。
 
 当前没有任何 Phase 0 技术闸口被判定为通过。
 
@@ -103,13 +103,13 @@ dotnet build mpv-winui.slnx -p:Platform=x64 --no-restore
 
 | 日期 | 工作包 | 环境 | 命令/操作 | 结果 | 证据路径 | 备注 |
 |---|---|---|---|---|---|---|
-| 2026-08-28 | 规划基线 | .NET SDK 10.0.400 | `dotnet build mpv-winui.slnx --no-restore` | 通过：0 警告、0 错误 | 终端记录 | 默认配置 |
-| 2026-08-28 | 规划基线 | .NET SDK 10.0.400 | `dotnet test mpv-winui.slnx --no-build --no-restore` | 通过：21/21 | 终端记录 | 默认配置 |
-| 2026-08-28 | 规划基线 | .NET SDK 10.0.400 | `dotnet build mpv-winui.slnx -p:Platform=x64 --no-restore` | 失败：`Debug|x64` 配置无效 | 终端记录 | P0-01 修复 |
-| 2026-08-28 | P0-00 | Windows 11 10.0.26200 x64，GTX 1060 5GB（驱动 32.0.15.8180） | `git log -1` / `dotnet --info` | 通过：基线提交 add45b6，SDK 10.0.400，主机架构 x64 | 终端记录 | 环境固化 |
-| 2026-08-28 | P0-00 | 同上 | `dotnet build mpv-winui.slnx --no-restore` | 通过：0 警告、0 错误 | 终端记录 | 基线复核 |
-| 2026-08-28 | P0-00 | 同上 | `dotnet test mpv-winui.slnx --no-build --no-restore` | 通过：21/21（Abstractions 1、MpvSidecar 3、VideoHost 1、App 16） | 终端记录 | 基线复核 |
-| 2026-08-28 | P0-00 | 同上 | 全仓扫描 `runtimes/` 目录与 `*.dll/lib/a` 文件（排除 bin/obj） | 通过：仓库中不存在任何原生二进制资产 | 终端记录 | 确认无来源不明 DLL |
+| 2026-08-28 | 规划基线 | .NET SDK 10.0.400 | `dotnet build mpv-winui.slnx --no-restore` | 通过：0 警告、0 错误 | `docs/implementation/evidence/P0-00-01-baseline-verification.md` | 默认配置 |
+| 2026-08-28 | 规划基线 | .NET SDK 10.0.400 | `dotnet test mpv-winui.slnx --no-build --no-restore` | 通过：21/21 | `docs/implementation/evidence/P0-00-01-baseline-verification.md` | 默认配置 |
+| 2026-08-28 | 规划基线 | .NET SDK 10.0.400 | `dotnet build mpv-winui.slnx -p:Platform=x64 --no-restore` | 失败：`Debug|x64` 配置无效 | `docs/implementation/evidence/P0-00-01-baseline-verification.md` | P0-01 修复 |
+| 2026-08-28 | P0-00 | Windows 11 10.0.26200 x64，GTX 1060 5GB（驱动 32.0.15.8180） | `git log -1` / `dotnet --info` | 通过：基线提交 add45b6，SDK 10.0.400，主机架构 x64 | `docs/implementation/evidence/P0-00-01-baseline-verification.md` | 环境固化 |
+| 2026-08-28 | P0-00 | 同上 | `dotnet build mpv-winui.slnx --no-restore` | 通过：0 警告、0 错误 | `docs/implementation/evidence/P0-00-01-baseline-verification.md` | 基线复核 |
+| 2026-08-28 | P0-00 | 同上 | `dotnet test mpv-winui.slnx --no-build --no-restore` | 通过：21/21（Abstractions 1、MpvSidecar 3、VideoHost 1、App 16） | `docs/implementation/evidence/P0-00-01-baseline-verification.md` | 基线复核 |
+| 2026-08-28 | P0-00 | 同上 | 全仓扫描 `runtimes/` 目录与 `*.dll/lib/a` 文件（排除 bin/obj） | 通过：仓库中不存在任何原生二进制资产 | `docs/implementation/evidence/P0-00-01-baseline-verification.md` | 确认无来源不明 DLL |
 
 ## 7. 技术决策记录
 
@@ -150,7 +150,7 @@ dotnet build mpv-winui.slnx -p:Platform=x64 --no-restore
 
 | 记录文件 | 工作包 | 日期 | 结论 |
 |---|---|---|---|
-| （暂无） |  |  |  |
+| `P0-00-01-baseline-verification.md` | P0-00 | 2026-08-28 | 通过 |
 
 ## 10. 更新规则
 
