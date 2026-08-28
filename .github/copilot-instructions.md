@@ -85,6 +85,17 @@ tests/
 
 ## 运行与构建
 
+- 在 **Windows PowerShell 5.1** 中运行或捕获 `dotnet` 输出前，必须先在当前终端会话执行一次以下临时 UTF-8 初始化，防止管道（例如 `2>&1 | Select-Object`）把 UTF-8 输出按 GBK 解码成乱码。此设置只作用于当前会话；不要为此修改用户的 PowerShell Profile 或系统级配置。
+
+  ```powershell
+  chcp 65001 > $null
+  $utf8 = [System.Text.UTF8Encoding]::new($false)
+  [Console]::InputEncoding = $utf8
+  [Console]::OutputEncoding = $utf8
+  $OutputEncoding = $utf8
+  ```
+
+- PowerShell 7 不需要上述初始化。无法确认版本时先检查 `$PSVersionTable.PSVersion`；同一 PowerShell 5.1 会话中不要在每条测试命令前重复执行。
 - 查看项目：`dotnet sln mpv-winui.slnx list`
 - 构建：`dotnet build mpv-winui.slnx -p:Platform=x64`
 - 测试：`dotnet test mpv-winui.slnx -p:Platform=x64`
