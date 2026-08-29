@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "generatedOn": "2026-08-29",
+  "mpv": {
+    "repository": "https://github.com/mpv-player/mpv.git",
+    "tag": "v0.41.0",
+    "commit": "41f6a645068483470267271e1d09966ca3b9f413",
+    "clientApi": "2.5",
+    "headers": {
+      "include/mpv/client.h": "A36A8D809FF068166676BF7C98FA1EC2EF5EB7C591A3359D5AA0E4D60E5DE40E",
+      "include/mpv/render.h": "1FE12292DE3E79D64FFF205CFDC40EE36EE5F5B52D2BF88292DC121326F26C94",
+      "include/mpv/render_gl.h": "33CCC48EBD32437DA46673FAEA034B5C46EC2DCFC587E9655A5017BF8576B5B8"
+    },
+    "mesonOptions": [
+      "--buildtype=release",
+      "--default-library=shared",
+      "-Dlibmpv=true",
+      "-Dcplayer=false",
+      "-Dgpl=false",
+      "-Dbuild-date=false",
+      "-Dtests=false",
+      "-Djavascript=disabled",
+      "-Dlua=disabled",
+      "-Drubberband=disabled",
+      "-Duchardet=disabled"
+    ]
+  },
+  "angle": {
+    "repository": "https://chromium.googlesource.com/angle/angle.git",
+    "branch": "chromium/7977",
+    "commit": "736ed80c7552a4b267bd54a282b971aa4555cb3e",
+    "depsSha256": "2B602E3E2E4D602DFB1B54E704A5F3493788BBFC787F041D401CDAF68FC8DF6D",
+    "licenseSha256": "54AFF7276217DF9F6B5181613999D208C9E40D2B1D51BF55217837E6871A4A63",
+    "gnArgs": {
+      "is_debug": false,
+      "is_component_build": false,
+      "target_cpu": "x64",
+      "angle_build_all": false,
+      "angle_build_tests": false,
+      "angle_enable_d3d11": true,
+      "angle_enable_d3d9": false,
+      "angle_enable_gl": false,
+      "angle_enable_null": false,
+      "angle_enable_vulkan": false,
+      "angle_enable_swiftshader": false
+    }
+  }
+}

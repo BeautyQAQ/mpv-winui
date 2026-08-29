@@ -1,7 +1,7 @@
 # Phase 0 实施进度
 
 > 总体状态：进行中（P0-00、P0-01、P0-06 已完成）
-> 当前工作包：无（P0-01、P0-06 已完成；P0-02 等待 EXT-03）
+> 当前工作包：P0-02（源码锁定与确定性加载机制已完成；等待原生 C++ 工具链生成实际依赖闭包）
 > 最后更新：2026-08-29
 > 架构基线：`docs/architecture.md` v1.1  
 > 执行计划：`docs/implementation/phase-0-plan.md`
@@ -63,7 +63,7 @@ dotnet build mpv-winui.slnx -p:Platform=x64 --no-restore
 |---|---|---|---|---|---|---|
 | P0-00 基线与输入确认 | 通过 | Copilot Agent | 2026-08-28 | 2026-08-28 | b2f4ccf |
 | P0-01 目标项目骨架和抽象边界 | 通过 | Codex | 2026-08-28 | 2026-08-28 | `21070a4` | 目标项目、x64 配置和无 HWND 抽象均已验证 |
-| P0-02 原生依赖与确定性加载 | 未开始 |  |  |  |  | 依赖 mpv/ANGLE 来源确认 |
+| P0-02 原生依赖与确定性加载 | 进行中 | Codex | 2026-08-29 |  | （待提交） | mpv/ANGLE commit 已锁定；加载器 11 测试通过；实际 DLL 闭包受本机原生工具链缺失阻塞 |
 | P0-03 libmpv C ABI 互操作层 | 未开始 |  |  |  |  | 依赖固定头文件 |
 | P0-04 会话生命周期 | 未开始 |  |  |  |  |  |
 | P0-05 命令、事件和播放控制 | 未开始 |  |  |  |  | Gate A |
@@ -87,9 +87,9 @@ dotnet build mpv-winui.slnx -p:Platform=x64 --no-restore
 
 | 编号 | 输入/阻塞项 | 状态 | 需要时间 | 负责人 | 证据或决定 |
 |---|---|---|---|---|---|
-| EXT-01 | mpv v0.41.0 x64 libmpv 构建来源、构建参数和许可证 | 已确认：来源策略 | P0-02 前 | Agent（执行与审计） | 使用 mpv 官方签名 tag `v0.41.0` 自建 win-x64 共享 libmpv；Meson 参数以 `-Dlibmpv=true -Ddefault_library=shared -Dcplayer=false -Dgpl=false -Dbuild-date=false` 为起点。P0-02 必须锁定完整 commit、FFmpeg/libplacebo/libass 等全部依赖版本，审计 LGPL 兼容闭包后才可落盘 |
-| EXT-02 | 与二进制匹配的 `client.h`、`render.h`、`render_gl.h` | 已确认 | P0-03 前 | Agent（执行） | 直接取最终 libmpv 构建所使用的同一 `v0.41.0` commit 源码树，并记录文件 SHA-256 |
-| EXT-03 | ANGLE x64 固定版本、来源、构建参数和许可证 | 阻塞：待精确版本审计 | P0-02/P0-07 前 | Agent | 来源策略确认为 ANGLE 官方源码自建 x64 Release；P0-02 前仍须给出完整 commit、DEPS/CIPD 闭包和 GN 参数，显式启用 D3D11、避免其他后端静默回退，并完成最小 EGL/D3D11 冒烟验证 |
+| EXT-01 | mpv v0.41.0 x64 libmpv 构建来源、构建参数和许可证 | 部分完成：源码已锁定 | P0-02 | Agent（执行与审计） | 固定 commit `41f6a645068483470267271e1d09966ca3b9f413` 与 Meson 参数；FFmpeg/libplacebo/libass 等实际依赖版本和 LGPL 兼容闭包待工具链构建后登记 |
+| EXT-02 | 与二进制匹配的 `client.h`、`render.h`、`render_gl.h` | 已确认并锁定 | P0-03 前 | Agent（执行） | 同 commit `41f6a645…` 三个头文件 SHA-256 已登记在 `build/native/source-lock.json` 与原生依赖清单 |
+| EXT-03 | ANGLE x64 固定版本、来源、构建参数和许可证 | 部分完成：源码已锁定 | P0-02/P0-07 | Agent | 固定 Chrome 152 `chromium/7977` commit `736ed80c…`、DEPS/LICENSE 哈希及 D3D11-only GN 参数；实际 gclient/CIPD 闭包和 EGL/D3D11 烟雾测试待工具链就绪 |
 | EXT-04 | 可再生成或许可证清晰的 SDR 测试媒体 | 已确认：生成策略 | P0-05 前 | Agent（生成） | 使用固定版本 ffmpeg 生成合成 SDR 测试素材；生成脚本、参数、工具版本和素材哈希入库，不依赖公网素材，不把 ffmpeg 作为应用运行时依赖 |
 | EXT-05 | 本地 HTTP/HLS 测试服务和固定媒体 | 已确认：实现策略 | P0-05 前 | Agent（实现） | 使用仓库内可重复启动的 .NET 本地静态 HTTP 服务和 ffmpeg 生成的 HLS 分段，不依赖公网或开发机全局服务 |
 | EXT-06 | 4K HEVC Main10、AV1、HDR10 和 10-bit 渐变素材 | 阻塞：依赖 EXT-07 硬件就绪 | P0-10 前 | 用户 | 素材候选来源待硬件确认后一并确定 |
@@ -124,6 +124,10 @@ dotnet build mpv-winui.slnx -p:Platform=x64 --no-restore
 | 2026-08-29 | P0-06 | Windows 11 x64，Codex Computer Use | 启动应用并切换窗口/最大化 | 通过：明确蓝色 SwapChain 清屏覆盖完整客户区；Resize 后无白边、黑屏或旧尺寸残留 | `docs/implementation/evidence/P0-06-01-d3d11-swapchain-baseline.md` | 修复 WinUI 3 原生接口查询与 SizeChanged 转发后复核 |
 | 2026-08-29 | P0-06 | 用户测试环境 | 真正全屏、不同 DPI/显示器、连续 50 次生命周期、GPU 内存观察 | 通过 | `docs/implementation/evidence/P0-06-01-d3d11-swapchain-baseline.md` | 用户确认全部无问题 |
 | 2026-08-29 | P0-06 | .NET SDK 10.0.400，x64 | `dotnet build mpv-winui.slnx -p:Platform=x64 --no-restore` / `dotnet test mpv-winui.slnx -p:Platform=x64 --no-build --no-restore` | 通过：构建 0 警告、0 错误；测试 44/44 | `docs/implementation/evidence/P0-06-01-d3d11-swapchain-baseline.md` | 最终回归 |
+| 2026-08-29 | P0-02 | .NET SDK 10.0.400，x64 | 固定上游 refs、核对源码头文件/DEPS/LICENSE 哈希 | 通过：mpv `41f6a645…`、ANGLE `736ed80c…` | `docs/implementation/evidence/P0-02-01-native-dependency-loading.md` | 源码供应链锁定 |
+| 2026-08-29 | P0-02 | 同上 | `dotnet test tests/MpvShell.Player.LibMpv.Tests/MpvShell.Player.LibMpv.Tests.csproj -p:Platform=x64 --no-restore` | 通过：11/11，0 警告、0 错误 | `docs/implementation/evidence/P0-02-01-native-dependency-loading.md` | 缺失/架构/哈希/API 诊断 |
+| 2026-08-29 | P0-02 | 同上 | `dotnet build mpv-winui.slnx -p:Platform=x64 --no-restore` / `dotnet test mpv-winui.slnx -p:Platform=x64 --no-build --no-restore` | 通过：构建 0 警告、0 错误；测试 53/53 | `docs/implementation/evidence/P0-02-01-native-dependency-loading.md` | 全量回归 |
+| 2026-08-29 | P0-02 | 本机工具扫描 | `Get-Command` / `vswhere` | 未通过真实构建前置：缺少 C++ Build Tools、depot_tools、GN/Ninja/Meson | `docs/implementation/evidence/P0-02-01-native-dependency-loading.md` | P0-02 保持进行中 |
 
 ## 7. 技术决策记录
 
@@ -169,6 +173,7 @@ dotnet build mpv-winui.slnx -p:Platform=x64 --no-restore
 |---|---|---|---|
 | `P0-00-01-baseline-verification.md` | P0-00 | 2026-08-28 | 通过 |
 | `P0-01-01-project-boundaries.md` | P0-01 | 2026-08-28 | 通过 |
+| `P0-02-01-native-dependency-loading.md` | P0-02 | 2026-08-29 | 进行中 |
 | `P0-06-01-d3d11-swapchain-baseline.md` | P0-06 | 2026-08-29 | 通过 |
 
 ## 10. 更新规则

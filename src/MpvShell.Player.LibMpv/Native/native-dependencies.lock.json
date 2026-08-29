@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "rid": "win-x64",
+  "expectedMpvClientApi": {
+    "major": 2,
+    "minimumMinor": 5
+  },
+  "assets": [
+    {
+      "fileName": "libmpv-2.dll",
+      "component": "mpv",
+      "group": "mpv",
+      "loadOrder": 100,
+      "logicalNames": [ "mpv" ],
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "fileName": "libEGL.dll",
+      "component": "ANGLE",
+      "group": "angle",
+      "loadOrder": 100,
+      "logicalNames": [ "EGL" ],
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "fileName": "libGLESv2.dll",
+      "component": "ANGLE",
+      "group": "angle",
+      "loadOrder": 110,
+      "logicalNames": [ "GLESv2" ],
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+  ]
+}

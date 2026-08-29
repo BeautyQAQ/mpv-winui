@@ -4,4 +4,10 @@
     <ProjectReference Include="..\MpvShell.Player.Abstractions\MpvShell.Player.Abstractions.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Include="Native\native-dependencies.lock.json"
+          CopyToOutputDirectory="PreserveNewest"
+          TargetPath="runtimes\win-x64\native\native-dependencies.json" />
+  </ItemGroup>
+
 </Project>
