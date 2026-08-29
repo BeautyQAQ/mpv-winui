@@ -4,9 +4,8 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using MpvShell.App.ViewModels;
-using MpvShell.Player.MpvSidecar;
+using MpvShell.Rendering.WinUI;
 using Windows.Foundation;
-using WinRT.Interop;
 
 namespace MpvShell.App.Views;
 
@@ -15,14 +14,14 @@ public sealed partial class PlayerPage : Page
     private DispatcherQueueTimer? _autoHideTimer;
     private Point? _dragStartPoint;
     private bool _initializeRequested;
-    private readonly LegacyMpvHost _legacyHost;
+    private readonly D3D11VideoSurfaceRenderer _videoSurfaceRenderer;
     public PlayerViewModel ViewModel { get; }
 
     public PlayerPage()
     {
         InitializeComponent();
         ViewModel = ((App)Application.Current).Services.GetRequiredService<PlayerViewModel>();
-        _legacyHost = ((App)Application.Current).Services.GetRequiredService<LegacyMpvHost>();
+        _videoSurfaceRenderer = new D3D11VideoSurfaceRenderer();
         DataContext = ViewModel;
     }
 
@@ -35,15 +34,34 @@ public sealed partial class PlayerPage : Page
 
         _initializeRequested = true;
 
-        if (Application.Current is not App app || app.MainWindowInstance is null)
+        await ViewModel.InitializeAsync();
+
+        // P0-06：绑定 D3D11 Composition SwapChain 到视频表面（不使用 libmpv）。
+        await _videoSurfaceRenderer.InitializeAsync(null!, CancellationToken.None);
+        await _videoSurfaceRenderer.AttachAsync(VideoSurface, CancellationToken.None);
+
+        EnsureAutoHideTimer();
+        RestartAutoHideTimer();
+    }
+
+    private async void OnUnloaded(object sender, RoutedEventArgs e)
+    {
+        await _videoSurfaceRenderer.DetachAsync(CancellationToken.None);
+    }
+
+    private async void OnVideoSurfaceSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        if (!_initializeRequested || e.NewSize.Width <= 0 || e.NewSize.Height <= 0)
         {
             return;
         }
 
-        _legacyHost.Attach(WindowNative.GetWindowHandle(app.MainWindowInstance));
-        await ViewModel.InitializeAsync();
-        EnsureAutoHideTimer();
-        RestartAutoHideTimer();
+        await _videoSurfaceRenderer.ResizeAsync(
+            new VideoSurfaceSize(
+                e.NewSize.Width,
+                e.NewSize.Height,
+                VideoSurface.RasterizationScale),
+            CancellationToken.None);
     }
 
     private void OnAnyPointerActivity(object sender, PointerRoutedEventArgs e)

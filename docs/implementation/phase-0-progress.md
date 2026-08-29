@@ -1,8 +1,8 @@
 # Phase 0 实施进度
 
-> 总体状态：进行中（P0-00、P0-01 已完成）
-> 当前工作包：无（P0-01 已完成；P0-06 可启动，P0-02 等待 EXT-03）
-> 最后更新：2026-08-28  
+> 总体状态：进行中（P0-00、P0-01、P0-06 已完成）
+> 当前工作包：无（P0-01、P0-06 已完成；P0-02 等待 EXT-03）
+> 最后更新：2026-08-29
 > 架构基线：`docs/architecture.md` v1.1  
 > 执行计划：`docs/implementation/phase-0-plan.md`
 
@@ -67,7 +67,7 @@ dotnet build mpv-winui.slnx -p:Platform=x64 --no-restore
 | P0-03 libmpv C ABI 互操作层 | 未开始 |  |  |  |  | 依赖固定头文件 |
 | P0-04 会话生命周期 | 未开始 |  |  |  |  |  |
 | P0-05 命令、事件和播放控制 | 未开始 |  |  |  |  | Gate A |
-| P0-06 D3D11 与 SwapChainPanel 基线 | 未开始 |  |  |  |  |  |
+| P0-06 D3D11 与 SwapChainPanel 基线 | 通过 | Copilot Agent / Codex | 2026-08-28 | 2026-08-29 | （待提交） | 清屏/Present、原生面板绑定、窗口尺寸同步及人工硬件验证均通过；Rendering 18 测试通过 |
 | P0-07 ANGLE/EGL 与 OpenGL FBO | 未开始 |  |  |  |  | 依赖 ANGLE 来源确认 |
 | P0-08 Render API SDR 集成 | 未开始 |  |  |  |  | Gate B |
 | P0-09 覆盖层、输入与生命周期 | 未开始 |  |  |  |  | Gate C |
@@ -118,6 +118,12 @@ dotnet build mpv-winui.slnx -p:Platform=x64 --no-restore
 | 2026-08-28 | P0-01 | 同上 | `dotnet test mpv-winui.slnx -p:Platform=x64 --no-build --no-restore` | 通过：33/33 | `docs/implementation/evidence/P0-01-01-project-boundaries.md` | 显式 x64 |
 | 2026-08-28 | P0-01 | 同上 | 默认配置 build/test | 通过：0 警告、0 错误；33/33 | `docs/implementation/evidence/P0-01-01-project-boundaries.md` | 默认配置解析为 x64 |
 | 2026-08-28 | P0-01 | 同上 | 边界扫描 `hostHandle|HWND|MpvSidecar|VideoHost` | 通过：Abstractions、LibMpv、Rendering.WinUI 无匹配 | `docs/implementation/evidence/P0-01-01-project-boundaries.md` | 无旧边界泄漏 |
+| 2026-08-28 | P0-06 | .NET SDK 10.0.400，x64 | `dotnet build mpv-winui.slnx -p:Platform=x64 --no-restore` | 通过：12 个项目，0 警告、0 错误；新增 Vortice.Direct3D11 3.8.3 | `docs/implementation/evidence/P0-06-01-d3d11-swapchain-baseline.md` | 自动化验证 |
+| 2026-08-28 | P0-06 | 同上 | `dotnet test mpv-winui.slnx -p:Platform=x64 --no-build` | 通过：所有测试 | `docs/implementation/evidence/P0-06-01-d3d11-swapchain-baseline.md` | VideoSurfaceContract：12，ResizeCoalescer：6，总计 18 |
+| 2026-08-28 | P0-06 | 同上 | 边界扫描 `hostHandle|MpvSidecar|VideoHost` | 通过：Abstractions、LibMpv、Rendering.WinUI 无匹配 | `docs/implementation/evidence/P0-06-01-d3d11-swapchain-baseline.md` | 新旧边界隔离 |
+| 2026-08-29 | P0-06 | Windows 11 x64，Codex Computer Use | 启动应用并切换窗口/最大化 | 通过：明确蓝色 SwapChain 清屏覆盖完整客户区；Resize 后无白边、黑屏或旧尺寸残留 | `docs/implementation/evidence/P0-06-01-d3d11-swapchain-baseline.md` | 修复 WinUI 3 原生接口查询与 SizeChanged 转发后复核 |
+| 2026-08-29 | P0-06 | 用户测试环境 | 真正全屏、不同 DPI/显示器、连续 50 次生命周期、GPU 内存观察 | 通过 | `docs/implementation/evidence/P0-06-01-d3d11-swapchain-baseline.md` | 用户确认全部无问题 |
+| 2026-08-29 | P0-06 | .NET SDK 10.0.400，x64 | `dotnet build mpv-winui.slnx -p:Platform=x64 --no-restore` / `dotnet test mpv-winui.slnx -p:Platform=x64 --no-build --no-restore` | 通过：构建 0 警告、0 错误；测试 44/44 | `docs/implementation/evidence/P0-06-01-d3d11-swapchain-baseline.md` | 最终回归 |
 
 ## 7. 技术决策记录
 
@@ -127,8 +133,11 @@ dotnet build mpv-winui.slnx -p:Platform=x64 --no-restore
 |---|---|---|---|---|---|
 | DEC-01 |  | HDR 使用 PQ 10-bit 或 scRGB 16-bit float | 待实测 | P0-10 | SwapChain 格式、ColorSpace、FBO 精度 |
 | DEC-02 |  | 默认硬件解码配置 | 待实测 | P0-10 | 性能、兼容性和 GPU 资源路径 |
-| DEC-03 |  | 是否增加极薄 C++/WinRT 图形桥接 | 待实测 | P0-06/P0-07 | 项目结构和原生资源所有权 |
+| DEC-03 |  | 是否增加极薄 C++/WinRT 图形桥接 | 待实测 | P0-06/P0-07 | 项目结构和原生资源所有权；P0-06 已用纯 C# + Vortice 表达 COM/资源所有权，暂不引入 C++ 桥接 |
 | DEC-04 |  | 最低 Windows/驱动支持范围 | 待实测 | P0-09/P0-10 | 发布要求和已知限制 |
+| DEC-P06-01 | 2026-08-28 | 使用 Vortice.Direct3D11 3.8.3 作为 D3D11/DXGI COM 互操作层 | 已实施 | P0-06 | 成熟的社区库，兼容 .NET 10，免手动 vtable 声明 |
+| DEC-P06-02 | 2026-08-28 | ISwapChainPanelNative GUID 为 63aad0b8-7c24-40ff-85a8-640d944cc325 | 已实施 | P0-06 | 来源于 Vortice.WinUI 的 WinUI 3 实现（microsoft.ui.xaml.media.dxinterop） |
+| DEC-P06-03 | 2026-08-28 | 物理像素转换使用 Math.Round（默认 MidpointRounding.ToEven） | 已实施 | P0-06 | 与 WinUI 3 和 D3D11 标准对齐 |
 
 ## 8. 风险与异常记录
 
@@ -160,6 +169,7 @@ dotnet build mpv-winui.slnx -p:Platform=x64 --no-restore
 |---|---|---|---|
 | `P0-00-01-baseline-verification.md` | P0-00 | 2026-08-28 | 通过 |
 | `P0-01-01-project-boundaries.md` | P0-01 | 2026-08-28 | 通过 |
+| `P0-06-01-d3d11-swapchain-baseline.md` | P0-06 | 2026-08-29 | 通过 |
 
 ## 10. 更新规则
 

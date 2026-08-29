@@ -108,3 +108,13 @@ tests/
 ## 范围提醒（避免过度实现）
 
 V1 不做：媒体库、刮削和海报墙、商业 DRM、浏览器认证与 Cookie 管理界面、跨设备同步、在线脚本市场、多播放内核切换，以及运行时在线下载或替换 libmpv。实现功能前先核对 `docs/architecture.md` 的产品范围和当前 Phase。
+
+# Network access
+
+- This development environment is located in mainland China and has a local HTTP proxy at `http://127.0.0.1:7890`.
+- When a shell command needs to search or access GitHub or another overseas website, route that command through the local proxy.
+- Prefer per-command proxy settings. Do not modify the user's global Git, shell, or system proxy configuration unless explicitly requested.
+- For `curl.exe`, use `--proxy http://127.0.0.1:7890`.
+- For Git network operations, use `git -c http.proxy=http://127.0.0.1:7890 <command>`.
+- For tools that honor proxy environment variables, set both `HTTP_PROXY` and `HTTPS_PROXY` to `http://127.0.0.1:7890` for that command or shell session.
+- Do not proxy localhost, private-network, or domestic-site requests unless the direct request fails and proxying is necessary.

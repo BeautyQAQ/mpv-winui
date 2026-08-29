@@ -14,6 +14,39 @@ public sealed class VideoSurfaceContractTests
         size.RasterizationScale.Should().Be(1.5);
     }
 
+    [Fact]
+    public void Surface_size_should_convert_to_physical_pixels_using_scale()
+    {
+        var size = new VideoSurfaceSize(1280, 720, 1.5);
+
+        size.PhysicalWidth.Should().Be(1920);
+        size.PhysicalHeight.Should().Be(1080);
+    }
+
+    [Fact]
+    public void Surface_size_physical_pixels_should_round_and_never_be_zero()
+    {
+        var scaled = new VideoSurfaceSize(10, 20, 0.25); // 2.5 -> 2 (MidpointRounding.ToEven); 5 -> 5
+        scaled.PhysicalWidth.Should().Be(2);
+        scaled.PhysicalHeight.Should().Be(5);
+
+        var tiny = new VideoSurfaceSize(0.2, 0.4, 1.0); // 低于 1，向上取整为 1
+        tiny.PhysicalWidth.Should().Be(1);
+        tiny.PhysicalHeight.Should().Be(1);
+    }
+
+    [Theory]
+    [InlineData(1920, 1080, 1.0)]
+    [InlineData(2400, 1350, 1.25)]
+    [InlineData(3840, 2160, 2.0)]
+    public void Surface_size_dpi_scaling_matrix(double expectedW, double expectedH, double scale)
+    {
+        var size = new VideoSurfaceSize(1920, 1080, scale);
+
+        size.PhysicalWidth.Should().Be((uint)expectedW);
+        size.PhysicalHeight.Should().Be((uint)expectedH);
+    }
+
     [Theory]
     [InlineData(-1, 720, 1)]
     [InlineData(1280, -1, 1)]

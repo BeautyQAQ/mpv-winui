@@ -29,4 +29,16 @@ public readonly record struct VideoSurfaceSize
     public double LogicalHeight { get; }
 
     public double RasterizationScale { get; }
+
+    /// <summary>
+    /// 逻辑宽度 × RasterizationScale，向上取整为物理像素宽度。
+    /// </summary>
+    public uint PhysicalWidth =>
+        (uint)Math.Max(1, (int)Math.Round(LogicalWidth * RasterizationScale));
+
+    /// <summary>
+    /// 逻辑高度 × RasterizationScale，向上取整为物理像素高度。
+    /// </summary>
+    public uint PhysicalHeight =>
+        (uint)Math.Max(1, (int)Math.Round(LogicalHeight * RasterizationScale));
 }
