@@ -1,0 +1,22 @@
+diff --git a/meson.build b/meson.build
+index e7efbbbe94..f1021ef3a2 100644
+--- a/meson.build
++++ b/meson.build
+@@ -3517,7 +3517,7 @@ makedef = find_program('compat/windows/makedef.py')
+ 
+ makedef_args = [makedef]
+ 
+-if cc.get_id() in ['clang', 'clang-cl']
++if cc.get_id() == 'clang'
+   # dumpbin returns LNK4048 with Clang archives
+   # FreeBSD nm returns "file format not recognized" with the same
+   nm = find_program('llvm-nm', required: false)
+@@ -3526,7 +3526,7 @@ if cc.get_id() in ['clang', 'clang-cl']
+     nm = find_program('nm')
+   endif
+   makedef_args += ['--nm', nm]
+-elif is_msvc
++elif cc.get_id() == 'clang-cl' or is_msvc
+   dumpbin = find_program('dumpbin', required: true)
+   makedef_args += ['--dumpbin', dumpbin]
+ else

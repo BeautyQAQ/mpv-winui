@@ -1,0 +1,7 @@
+[wrap-git]
+url = https://github.com/libass/libass.git
+revision = bbb3c7f1570a4a021e52683f3fbdf74fe492ae84
+depth = 1
+
+[provide]
+dependency_names = libass

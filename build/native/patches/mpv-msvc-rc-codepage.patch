@@ -1,0 +1,12 @@
+diff --git a/meson.build b/meson.build
+--- a/meson.build
++++ b/meson.build
+@@ -1762,7 +1762,7 @@ features += {'libmpv-' + get_option('default_library'): get_option('libmpv')}
+ # build targets
+ if win32
+     windows = import('windows')
+-    res_flags = ['--codepage=65001']
++    res_flags = ['/c65001']
+ 
+     # Unintuitively, this compile operates out of the osdep subdirectory.
+     # Hence, these includes are needed.

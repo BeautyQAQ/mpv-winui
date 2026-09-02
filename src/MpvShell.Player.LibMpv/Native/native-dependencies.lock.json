@@ -12,23 +12,31 @@
       "group": "mpv",
       "loadOrder": 100,
       "logicalNames": [ "mpv" ],
-      "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+      "sha256": "D0D01C2AF708423E6B281ADC58A39FAFD1FB2CFA8FE76D437D76383F088BA228"
     },
     {
-      "fileName": "libEGL.dll",
-      "component": "ANGLE",
+      "fileName": "d3dcompiler_47.dll",
+      "component": "Microsoft D3DCompiler",
       "group": "angle",
-      "loadOrder": 100,
-      "logicalNames": [ "EGL" ],
-      "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+      "loadOrder": 90,
+      "logicalNames": [],
+      "sha256": "E407B9FFADEF47E87994DC488214F75405CF04EE99589F2315FC7AB99FD1DFE2"
     },
     {
       "fileName": "libGLESv2.dll",
       "component": "ANGLE",
       "group": "angle",
-      "loadOrder": 110,
+      "loadOrder": 100,
       "logicalNames": [ "GLESv2" ],
-      "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+      "sha256": "55ECF05D47B4CCFCF91B4F5FE0F21ED3FCE2584B6CC54E4F6855A65142F32D3C"
+    },
+    {
+      "fileName": "libEGL.dll",
+      "component": "ANGLE",
+      "group": "angle",
+      "loadOrder": 110,
+      "logicalNames": [ "EGL" ],
+      "sha256": "8B912D254D5FC8755840B6FD1E404F36E466521FD63F68255528CD7F101909D7"
     }
   ]
 }

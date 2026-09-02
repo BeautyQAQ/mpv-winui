@@ -23,4 +23,10 @@
     <ProjectReference Include="..\MpvShell.Player.MpvSidecar\MpvShell.Player.MpvSidecar.csproj" />
     <ProjectReference Include="..\MpvShell.Rendering.WinUI\MpvShell.Rendering.WinUI.csproj" />
   </ItemGroup>
+
+  <ItemGroup>
+    <None Update="Assets\Native\win-x64\*.dll"
+          CopyToOutputDirectory="PreserveNewest"
+          TargetPath="runtimes\win-x64\native\%(Filename)%(Extension)" />
+  </ItemGroup>
 </Project>
