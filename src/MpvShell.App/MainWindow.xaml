@@ -9,5 +9,5 @@
         <MicaBackdrop />
     </Window.SystemBackdrop>
 
-    <views:PlayerPage />
+    <views:PlayerPage x:Name="Player" />
 </Window>

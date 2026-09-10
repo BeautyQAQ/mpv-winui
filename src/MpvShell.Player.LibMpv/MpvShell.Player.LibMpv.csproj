@@ -1,5 +1,13 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
+  <PropertyGroup>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="MpvShell.Player.LibMpv.Tests" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\MpvShell.Player.Abstractions\MpvShell.Player.Abstractions.csproj" />
   </ItemGroup>

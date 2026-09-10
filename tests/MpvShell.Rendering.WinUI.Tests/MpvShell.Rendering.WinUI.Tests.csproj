@@ -22,4 +22,10 @@
     <ProjectReference Include="..\..\src\MpvShell.Rendering.WinUI\MpvShell.Rendering.WinUI.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Include="..\..\src\MpvShell.App\Assets\Native\win-x64\*.dll"
+          Link="runtimes\win-x64\native\%(Filename)%(Extension)"
+          CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

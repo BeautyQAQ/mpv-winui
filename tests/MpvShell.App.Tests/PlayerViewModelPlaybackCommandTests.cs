@@ -14,7 +14,10 @@ public sealed class PlayerViewModelPlaybackCommandTests
     public async Task Toggle_play_pause_should_start_playback_when_currently_paused()
     {
         var backend = new RecordingBackend();
-        var vm = new PlayerViewModel(backend, new PlaybackInteractionCoordinator());
+        var vm = new PlayerViewModel(backend, new PlaybackInteractionCoordinator())
+        {
+            State = PlaybackState.Initial with { CurrentUrl = "http://127.0.0.1/sample.mp4" },
+        };
 
         await vm.TogglePlayPauseCommand.ExecuteAsync(null);
 
@@ -22,6 +25,20 @@ public sealed class PlayerViewModelPlaybackCommandTests
         backend.PauseCalls.Should().Be(0);
         vm.State.IsPlaying.Should().BeTrue();
         vm.State.AreControlsVisible.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Play_without_media_should_stay_idle_and_explain_how_to_start()
+    {
+        var backend = new RecordingBackend();
+        await using var vm = new PlayerViewModel(backend, new PlaybackInteractionCoordinator());
+
+        await vm.TogglePlayPauseCommand.ExecuteAsync(null);
+
+        backend.PlayCalls.Should().Be(0);
+        vm.State.IsPlaying.Should().BeFalse();
+        vm.State.AreControlsVisible.Should().BeTrue();
+        vm.ErrorMessage.Should().Be("请先打开媒体。");
     }
 
     [Fact]

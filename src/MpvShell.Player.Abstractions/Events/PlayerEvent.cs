@@ -9,3 +9,9 @@ public sealed record PlaybackStateChanged(PlaybackState State) : PlayerEvent;
 public sealed record TracksChanged(IReadOnlyList<TrackInfo> Tracks) : PlayerEvent;
 
 public sealed record BackendFaulted(string Message) : PlayerEvent;
+
+public sealed record MediaInfoChanged(InfoPanelSnapshot Snapshot) : PlayerEvent;
+
+public sealed record EndReached : PlayerEvent;
+
+public sealed record BufferingChanged(bool IsBuffering) : PlayerEvent;

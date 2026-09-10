@@ -3,7 +3,8 @@ using Microsoft.UI.Xaml;
 using MpvShell.App.Services;
 using MpvShell.App.ViewModels;
 using MpvShell.Player.Abstractions;
-using MpvShell.Player.MpvSidecar;
+using MpvShell.Player.LibMpv;
+using System.Diagnostics;
 
 namespace MpvShell.App;
 
@@ -15,11 +16,23 @@ public partial class App : Application
 
     public App()
     {
+        var logDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "MpvShell", "logs");
+        try
+        {
+            Directory.CreateDirectory(logDirectory);
+            Trace.Listeners.Add(new TextWriterTraceListener(Path.Combine(logDirectory, $"session-{DateTime.Now:yyyyMMdd-HHmmss}-{Environment.ProcessId}.log")));
+            Trace.AutoFlush = true;
+            Trace.WriteLine($"[{DateTimeOffset.Now:O}] MpvShell 启动，进程 {Environment.ProcessId}");
+        }
+        catch (IOException) { }
+        catch (UnauthorizedAccessException) { }
         InitializeComponent();
+        UnhandledException += (_, args) => Trace.WriteLine($"未处理异常：{args.Exception}");
 
         var services = new ServiceCollection();
-        services.AddSingleton<LegacyMpvHost>();
-        services.AddSingleton<IPlayerBackend, MpvSidecarBackend>();
+        services.AddSingleton<MpvPlayerSession>();
+        services.AddSingleton<IMpvPlayerSession>(provider => provider.GetRequiredService<MpvPlayerSession>());
+        services.AddSingleton<IPlayerBackend, LibMpvBackend>();
         services.AddSingleton<PlaybackInteractionCoordinator>();
         services.AddSingleton<GestureDecisionEngine>();
         services.AddSingleton<RecentUrlStore>();

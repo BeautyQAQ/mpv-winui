@@ -9,7 +9,7 @@ using System.Collections.ObjectModel;
 
 namespace MpvShell.App.ViewModels;
 
-public partial class PlayerViewModel : ObservableObject
+public partial class PlayerViewModel : ObservableObject, IAsyncDisposable
 {
     private readonly IPlayerBackend _backend;
     private readonly PlaybackInteractionCoordinator _coordinator;
@@ -20,6 +20,38 @@ public partial class PlayerViewModel : ObservableObject
     private Task? _eventPumpTask;
     private PlaybackState _state = PlaybackState.Initial;
     private string _urlText = string.Empty;
+    private Action<Action> _dispatchToUi = action => action();
+    private readonly SemaphoreSlim _initializationGate = new(1, 1);
+    private readonly object _disposalGate = new();
+    private Task? _disposeTask;
+    private bool _disposed;
+
+    // 页面提供 UI 调度器；纯逻辑测试无需创建 WinUI 线程。
+    public void SetUiDispatcher(Action<Action> dispatchToUi) =>
+        _dispatchToUi = dispatchToUi ?? throw new ArgumentNullException(nameof(dispatchToUi));
+
+    public bool IsInitialized => _isInitialized;
+    public string PlayPauseLabel => State.IsPlaying ? "暂停" : "播放";
+    public string MuteLabel => State.IsMuted ? "取消静音" : "静音";
+    public string TimeLabel => $"{FormatTime(State.PositionSeconds)} / {FormatTime(State.DurationSeconds)}";
+    public string MediaTitle => string.IsNullOrEmpty(State.CurrentUrl) ? "打开视频开始播放" :
+        Uri.TryCreate(State.CurrentUrl, UriKind.Absolute, out var uri) && !uri.IsFile
+            ? uri.GetLeftPart(UriPartial.Path)
+            : Path.GetFileName(State.CurrentUrl);
+
+    private static string FormatTime(double seconds)
+    {
+        var time = TimeSpan.FromSeconds(double.IsFinite(seconds) ? Math.Max(0, seconds) : 0);
+        return time.TotalHours >= 1 ? $"{(int)time.TotalHours}:{time.Minutes:00}:{time.Seconds:00}" : $"{time.Minutes:00}:{time.Seconds:00}";
+    }
+
+    public void ReportError(string message)
+    {
+        ErrorMessage = message;
+        State = State with { AreControlsVisible = true };
+    }
+
+    public void RevealControls() => State = State with { AreControlsVisible = true };
 
     public PlayerViewModel(IPlayerBackend backend, PlaybackInteractionCoordinator coordinator)
         : this(backend, coordinator, new GestureDecisionEngine(), new RecentUrlStore(), new InfoPanelViewModel())
@@ -80,6 +112,10 @@ public partial class PlayerViewModel : ObservableObject
             OnPropertyChanged(nameof(InfoPanelVisibility));
             OnPropertyChanged(nameof(OsdVisibility));
             OnPropertyChanged(nameof(TracksVisibility));
+            OnPropertyChanged(nameof(PlayPauseLabel));
+            OnPropertyChanged(nameof(MuteLabel));
+            OnPropertyChanged(nameof(TimeLabel));
+            OnPropertyChanged(nameof(MediaTitle));
         }
     }
 
@@ -110,32 +146,42 @@ public partial class PlayerViewModel : ObservableObject
 
     public async Task InitializeAsync()
     {
-        if (_isInitialized)
-        {
-            return;
-        }
-
+        await _initializationGate.WaitAsync();
         try
         {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            if (_isInitialized) return;
             await _backend.InitializeAsync(CancellationToken.None);
+            if (_disposed) return;
             _isInitialized = true;
             StartEventPump();
             ErrorMessage = null;
         }
         catch (Exception ex)
         {
-            ErrorMessage = ex.Message;
+            if (!_disposed) ReportError(ex.Message);
+        }
+        finally
+        {
+            _initializationGate.Release();
         }
     }
 
     public void OnIdleTimeout()
     {
-        State = _coordinator.OnIdleTimeout(State);
+        if (State.IsPlaying && ErrorMessage is null)
+            State = _coordinator.OnIdleTimeout(State);
     }
 
     public async Task HandleDragAsync(double deltaX, double deltaY)
     {
-        if (_gestureDecisionEngine.Classify(deltaX, deltaY) != PlayerGesture.Seek)
+        var gesture = _gestureDecisionEngine.Classify(deltaX, deltaY);
+        if (gesture == PlayerGesture.Volume)
+        {
+            await ChangeVolumeAsync(State.Volume - deltaY / 4);
+            return;
+        }
+        if (gesture != PlayerGesture.Seek)
         {
             return;
         }
@@ -214,9 +260,39 @@ public partial class PlayerViewModel : ObservableObject
         State = _coordinator.ToggleOverlay(State, OverlayKind.InfoPanel);
     }
 
+    public async Task ChangeVolumeAsync(double volume)
+    {
+        try
+        {
+            var value = (int)Math.Clamp(volume, 0, 100);
+            await _backend.SetVolumeAsync(value, CancellationToken.None);
+            State = State with { Volume = value };
+            ErrorMessage = null;
+        }
+        catch (Exception ex) { ReportError(ex.Message); }
+    }
+
+    [RelayCommand]
+    private async Task ToggleMuteAsync()
+    {
+        try
+        {
+            var muted = !State.IsMuted;
+            await _backend.SetMuteAsync(muted, CancellationToken.None);
+            State = State with { IsMuted = muted };
+            ErrorMessage = null;
+        }
+        catch (Exception ex) { ReportError(ex.Message); }
+    }
+
     [RelayCommand]
     private async Task TogglePlayPauseAsync()
     {
+        if (string.IsNullOrWhiteSpace(State.CurrentUrl))
+        {
+            ReportError("请先打开媒体。");
+            return;
+        }
         try
         {
             if (State.IsPlaying)
@@ -276,8 +352,9 @@ public partial class PlayerViewModel : ObservableObject
     {
         try
         {
-            await _backend.SeekAsync(deltaSeconds, CancellationToken.None);
+            // 原生 time-pos 事件可能在请求回复之前到达，目标必须根据发出请求时的状态计算。
             var nextPosition = ClampPosition(State.PositionSeconds + deltaSeconds);
+            await _backend.SeekAsync(deltaSeconds, CancellationToken.None);
             State = _coordinator.ShowControls(State with { PositionSeconds = nextPosition });
             ErrorMessage = null;
         }
@@ -345,7 +422,8 @@ public partial class PlayerViewModel : ObservableObject
         _eventPumpCts?.Dispose();
 
         _eventPumpCts = new CancellationTokenSource();
-        _eventPumpTask = Task.Run(() => ObserveBackendEventsAsync(_eventPumpCts.Token));
+        var token = _eventPumpCts.Token;
+        _eventPumpTask = Task.Run(() => ObserveBackendEventsAsync(token));
     }
 
     private async Task ObserveBackendEventsAsync(CancellationToken cancellationToken)
@@ -354,18 +432,32 @@ public partial class PlayerViewModel : ObservableObject
         {
             await foreach (var playerEvent in _backend.ObserveEventsAsync(cancellationToken).WithCancellation(cancellationToken))
             {
-                switch (playerEvent)
+                _dispatchToUi(() =>
                 {
+                    if (_disposed || cancellationToken.IsCancellationRequested) return;
+                    switch (playerEvent)
+                    {
                     case PlaybackStateChanged stateChanged:
-                        State = stateChanged.State;
+                        State = stateChanged.State with
+                        {
+                            AreControlsVisible = State.AreControlsVisible || !stateChanged.State.IsPlaying,
+                            CurrentOverlay = State.CurrentOverlay,
+                        };
                         break;
                     case TracksChanged tracksChanged:
                         ReplaceTracks(tracksChanged.Tracks);
                         break;
-                    case BackendFaulted faulted:
-                        ErrorMessage = faulted.Message;
+                    case MediaInfoChanged infoChanged:
+                        InfoPanel.Update(infoChanged.Snapshot);
                         break;
-                }
+                    case EndReached:
+                        State = State with { IsPlaying = false, AreControlsVisible = true };
+                        break;
+                    case BackendFaulted faulted:
+                        ReportError(faulted.Message);
+                        break;
+                    }
+                });
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -373,7 +465,26 @@ public partial class PlayerViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            ErrorMessage = ex.Message;
+            _dispatchToUi(() => { if (!_disposed) ReportError(ex.Message); });
         }
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        lock (_disposalGate) return new ValueTask(_disposeTask ??= DisposeCoreAsync());
+    }
+
+    private async Task DisposeCoreAsync()
+    {
+        _disposed = true;
+        await _initializationGate.WaitAsync();
+        try
+        {
+            _eventPumpCts?.Cancel();
+            if (_eventPumpTask is not null) await _eventPumpTask;
+            _eventPumpCts?.Dispose();
+            await _backend.DisposeAsync();
+        }
+        finally { _initializationGate.Release(); }
     }
 }

@@ -20,4 +20,10 @@
     <ProjectReference Include="..\..\src\MpvShell.Player.LibMpv\MpvShell.Player.LibMpv.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Include="..\..\src\MpvShell.App\Assets\Native\win-x64\*.dll"
+          Link="runtimes\win-x64\native\%(Filename)%(Extension)"
+          CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

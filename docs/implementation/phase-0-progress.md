@@ -1,10 +1,12 @@
 # Phase 0 实施进度
 
-> 总体状态：进行中（P0-00、P0-01、P0-02、P0-06 已完成）
-> 当前工作包：P0-02 已通过；下一前置工作包为 P0-03
-> 最后更新：2026-08-30
+> 总体状态：进行中（SDR 播放 MVP 已完成，Debug/Release 各 95/95 测试与自包含发布包 GUI 验证通过；完整 Phase 0 闸口尚未验收）
+> 当前阶段：已交付本地/HTTP SDR MVP；HDR 与 4K 硬解按用户安排暂缓，后续继续完整 Phase 0 验收
+> 最后更新：2026-09-10
 > 架构基线：`docs/architecture.md` v1.1  
 > 执行计划：`docs/implementation/phase-0-plan.md`
+
+2026-09-10：应用已接入新后端；通过原生文件选择器打开用户的 result.mp4 后，SwapChainPanel 显示正向视频，先通过时间轴跳转到 19 秒，后续在 44 秒暂停并保持稳定，媒体信息和单音轨列表均已实测。本机 HTTP 视频播放到 EOF，404 错误后可恢复；F11/Esc 全屏切换、音量/静音和正常关闭均已验证。真实 GPU 测试验证上下色块、64→96→128→64 resize 及同一 mpv core 的渲染上下文重建。Debug/Release 全量构建均为 0 警告、0 错误，各通过 95/95 测试。详细记录见 [SDR MVP 实施记录](mvp-progress.md)；HLS、HDR/硬解及完整 DPI/显示器矩阵仍未验收，MVP 进展不能等同于全部 Phase 0 闸口通过。
 
 ## 1. 状态说明
 
@@ -19,9 +21,11 @@
 
 只有存在可复核证据时才能标记“通过”。代码合并、能够编译或能够看到画面均不自动等于通过。
 
-## 2. 当前基线
+## 2. 初始基线与当前回归
 
-审计日期：2026-08-28（P0-00 当日复核）。
+当前回归日期：2026-09-10。SDK 为 .NET 10.0.401，Windows x64；Debug、Release 全量构建均通过且无警告/错误，两种配置各通过 95 个测试：App 34、LibMpv 30、Rendering 23、Abstractions 2、Sidecar 5、VideoHost 1。原生依赖已固定并接入，真实控制、SDR 渲染与主要 GUI 操作已有证据。SDR MVP 自包含发布包位于 `artifacts/mvp/win-x64/MpvShell.App.exe`，原生校验与最终目录 GUI 播放均通过；发布命令为 PowerShell 7 下的 `.\build\testing\publish-mvp.ps1`。
+
+以下为 2026-08-28 初始审计快照（P0-00 当日复核），保留历史状态，不代表当前实现：
 
 - 基线提交：`add45b6e9c9634f1b3617013e14ee9e887819c26`（分支 `main`，2026-08-28）
 - 解决方案：`mpv-winui.slnx`
@@ -64,24 +68,24 @@ dotnet build mpv-winui.slnx -p:Platform=x64 --no-restore
 | P0-00 基线与输入确认 | 通过 | Copilot Agent | 2026-08-28 | 2026-08-28 | b2f4ccf |
 | P0-01 目标项目骨架和抽象边界 | 通过 | Codex | 2026-08-28 | 2026-08-28 | `21070a4` | 目标项目、x64 配置和无 HWND 抽象均已验证 |
 | P0-02 原生依赖与确定性加载 | 通过 | Codex | 2026-08-29 | 2026-08-30 | （待提交） | 真实 mpv/ANGLE 构建、四 DLL 闭包、许可证/PE 导入审计、哈希、固定输出加载与 D3D11 EGL 烟雾测试均通过 |
-| P0-03 libmpv C ABI 互操作层 | 未开始 |  |  |  |  | 依赖固定头文件 |
-| P0-04 会话生命周期 | 未开始 |  |  |  |  |  |
-| P0-05 命令、事件和播放控制 | 未开始 |  |  |  |  | Gate A |
+| P0-03 libmpv C ABI 互操作层 | 进行中 | Codex | 2026-09-10 |  |  | 已实现固定头文件对应 ABI、UTF-8 和原生参数；MSVC C 布局核验与原生测试通过，待正式工作包验收回填 |
+| P0-04 会话生命周期 | 进行中 | Codex | 2026-09-10 |  |  | 独立事件/命令线程、取消、幂等关闭及 context→core 释放；100 次真实会话循环通过 |
+| P0-05 命令、事件和播放控制 | 进行中 | Codex | 2026-09-10 |  |  | Gate A：本地/HTTP 控制、暂停、seek、EOF/重播和加载错误恢复已验证；HLS 尚未单独实测 |
 | P0-06 D3D11 与 SwapChainPanel 基线 | 通过 | Copilot Agent / Codex | 2026-08-28 | 2026-08-29 | （待提交） | 清屏/Present、原生面板绑定、窗口尺寸同步及人工硬件验证均通过；Rendering 18 测试通过 |
-| P0-07 ANGLE/EGL 与 OpenGL FBO | 未开始 |  |  |  |  | 依赖 ANGLE 来源确认 |
-| P0-08 Render API SDR 集成 | 未开始 |  |  |  |  | Gate B |
-| P0-09 覆盖层、输入与生命周期 | 未开始 |  |  |  |  | Gate C |
-| P0-10 4K、硬解和 HDR 验证 | 未开始 |  |  |  |  | Gate D，依赖真实硬件 |
+| P0-07 ANGLE/EGL 与 OpenGL FBO | 进行中 | Codex | 2026-09-10 |  |  | D3D11 纹理直接导入 EGL pbuffer；真实 GPU 色块、resize 和上下文重建通过 |
+| P0-08 Render API SDR 集成 | 进行中 | Codex | 2026-09-10 |  |  | Gate B：用户视频正向进入 SwapChainPanel；软件解码 SDR、暂停和 seek 已实测，完整性能/色彩与窗口矩阵待验收 |
+| P0-09 覆盖层、输入与生命周期 | 进行中 | Codex | 2026-09-10 |  |  | Gate C：文件选择、暂停、时间轴、轨道/信息覆盖层已实测；UI 派发和关闭竞争测试通过，完整输入/显示器矩阵待验收 |
+| P0-10 4K、硬解和 HDR 验证 | 未开始 |  |  |  |  | Gate D，按用户 2026-09-10 指令暂缓；不影响当前 SDR MVP 推进 |
 | P0-11 切换、清理与 Phase 0 验收 | 未开始 |  |  |  |  | 仅 Gate A～D 全部通过后开始 |
 
 ## 4. 闸口状态
 
 | 闸口 | 状态 | 自动化证据 | 人工证据 | 结论 |
 |---|---|---|---|---|
-| Gate A：libmpv 控制 | 未开始 | 无 | 无 | 未验证 |
-| Gate B：SDR Render API | 未开始 | 无 | 无 | 未验证 |
-| Gate C：XAML 覆盖与输入 | 未开始 | 无 | 无 | 未验证 |
-| Gate D：4K、硬件解码与 HDR | 未开始 | 无 | 无 | 未验证 |
+| Gate A：libmpv 控制 | 进行中 | LibMpv 30 测试含真实会话、本地/HTTP 控制、EOF、取消和错误恢复 | 原生文件选择后真实播放、暂停与时间轴 seek | 控制路径已有证据；待正式闸口证据审计，HLS 未单独实测 |
+| Gate B：SDR Render API | 进行中 | Rendering 23 测试含真实 GPU 色块方向、resize、同一 core 重建上下文 | result.mp4 正向显示，暂停画面稳定 | SDR 路线已打通；完整窗口/性能/色彩对比验收未完成 |
+| Gate C：XAML 覆盖与输入 | 进行中 | App 34 测试含 UI 事件派发、浮层保留、seek 竞争与关闭协调 | 原生文件选择、时间轴、媒体信息/轨道、音量/静音、F11/Esc 及正常关闭均已验证 | 完整触屏、DPI/显示器矩阵未完成 |
+| Gate D：4K、硬件解码与 HDR | 未开始 | 无 | 无 | 按用户安排暂缓，当前默认软件解码 |
 
 ## 5. 外部输入与阻塞项
 
@@ -90,14 +94,14 @@ dotnet build mpv-winui.slnx -p:Platform=x64 --no-restore
 | EXT-01 | mpv v0.41.0 x64 libmpv 构建来源、构建参数和许可证 | 已完成 | P0-02 | Agent（执行与审计） | 真实构建 `libmpv-2.dll`；完整静态依赖、LGPL 兼容参数、补丁、系统 DLL 导入和 SHA-256 已登记 |
 | EXT-02 | 与二进制匹配的 `client.h`、`render.h`、`render_gl.h` | 已确认并锁定 | P0-03 前 | Agent（执行） | 同 commit `41f6a645…` 三个头文件 SHA-256 已登记在 `build/native/source-lock.json` 与原生依赖清单 |
 | EXT-03 | ANGLE x64 固定版本、来源、构建参数和许可证 | 已完成 | P0-02/P0-07 | Agent | 固定 Chrome 152 `chromium/7977`；真实构建三 DLL 闭包并登记哈希；EGL 1.5、OpenGL ES 3.0 与 NVIDIA D3D11 后端烟雾测试通过 |
-| EXT-04 | 可再生成或许可证清晰的 SDR 测试媒体 | 已确认：生成策略 | P0-05 前 | Agent（生成） | 使用固定版本 ffmpeg 生成合成 SDR 测试素材；生成脚本、参数、工具版本和素材哈希入库，不依赖公网素材，不把 ffmpeg 作为应用运行时依赖 |
-| EXT-05 | 本地 HTTP/HLS 测试服务和固定媒体 | 已确认：实现策略 | P0-05 前 | Agent（实现） | 使用仓库内可重复启动的 .NET 本地静态 HTTP 服务和 ffmpeg 生成的 HLS 分段，不依赖公网或开发机全局服务 |
-| EXT-06 | 4K HEVC Main10、AV1、HDR10 和 10-bit 渐变素材 | 阻塞：依赖 EXT-07 硬件就绪 | P0-10 前 | 用户 | 素材候选来源待硬件确认后一并确定 |
-| EXT-07 | HDR 显示器、GPU、驱动和 Windows 测试环境 | 部分确认 | P0-10 前 | 用户 | 开发机已确认：Windows 11 10.0.26200、GTX 1060 5GB、驱动 32.0.15.8180；**HDR 显示器状态未确认**，P0-10 前必须给出 HDR 验证机清单 |
+| EXT-04 | 可再生成或许可证清晰的 SDR 测试媒体 | 已完成当前测试准备 | P0-05 前 | Agent（生成） | 测试代码生成 WAV/Y4M 合成媒体；用户授权本机 result.mp4 用于 GUI 验证，哈希见 MVP 记录；视频及截图不纳入 Git |
+| EXT-05 | 本地 HTTP/HLS 测试服务和固定媒体 | HTTP 已完成；HLS 待验证 | P0-05 前 | Agent（实现） | Python 标准库服务仅监听 127.0.0.1 并支持 Range；原生测试使用 .NET 本机 HTTP 服务，已验证控制和 404 恢复；HLS 尚未单独实测 |
+| EXT-06 | 4K HEVC Main10、AV1、HDR10 和 10-bit 渐变素材 | 按用户安排暂缓 | P0-10 前 | 用户 | 2026-09-10 明确先完成播放，后续恢复 HDR/硬解验收时确认素材与硬件 |
+| EXT-07 | HDR 显示器、GPU、驱动和 Windows 测试环境 | 部分确认；HDR 验证暂缓 | P0-10 前 | 用户 | 开发机已确认：Windows 11 10.0.26200、GTX 1060 5GB、驱动 32.0.15.8180；HDR 显示器尚未确认，按用户指令暂不作为 SDR MVP 阻塞 |
 
 说明：EXT-01、EXT-02、EXT-03、EXT-04、EXT-05 已有明确来源或实现策略；P0-02 的四个 DLL 全部来自仓库锁定的构建流程，没有来源不明的运行时资产。
 
-当前没有任何 Phase 0 技术闸口被判定为通过。
+Gate A～C 已进入实现和验证阶段，但尚未完成逐项正式验收；Gate D 按用户安排暂缓。当前不宣布完整 Phase 0 通过。
 
 ## 6. 验证记录
 
@@ -132,6 +136,13 @@ dotnet build mpv-winui.slnx -p:Platform=x64 --no-restore
 | 2026-08-30 | P0-02 | Windows 11 x64、GTX 1060 | 清单比对、`dumpbin`、`test-native-closure.ps1`、`test-angle.ps1` | 通过：无未登记/VC Runtime DLL；mpv API 2.5；ANGLE D3D11 / EGL 1.5 / GLES 3.0 | `docs/implementation/evidence/P0-02-01-native-dependency-loading.md` | 源码资产与应用输出目录均复测 |
 | 2026-08-30 | P0-02 | .NET SDK 10.0.400，x64 | `dotnet build` / `dotnet test` | 通过：构建 0 警告、0 错误；测试 53/53 | `docs/implementation/evidence/P0-02-01-native-dependency-loading.md` | 最终回归 |
 | 2026-08-30 | P0-02 | .NET SDK 10.0.400，win-x64 | Release 自包含 `dotnet publish` + 两个原生烟雾测试 | 通过：发布目录四 DLL 与清单一致；mpv API 2.5；ANGLE D3D11 | `docs/implementation/evidence/P0-02-01-native-dependency-loading.md` | 发布输出验收 |
+| 2026-09-10 | SDR MVP 集成 | .NET SDK 10.0.401，Windows x64 | Debug/Release 全量 build/test | 两种配置均为 0 警告、0 错误，各 95/95 测试通过 | `docs/implementation/mvp-progress.md` | App 34、LibMpv 30、Rendering 23、Abstractions 2、旧项目 6 |
+| 2026-09-10 | P0-04/P0-05 | 真实固定 libmpv，x64 | 100 次会话循环、本地/HTTP 控制、EOF 重播、404 后恢复 | 通过 | `tests/MpvShell.Player.LibMpv.Tests/MpvPlayerSessionTests.cs`、`LibMpvHttpTests.cs` | HTTP/Range 已验证，HLS 未单独实测 |
+| 2026-09-10 | P0-07/P0-08 | 本机 GPU，ANGLE/D3D11 | 上红下蓝 Y4M，经 64→96→128→64 resize，并在同一 core 重建渲染上下文 | 通过：每轮像素方向及颜色符合预期 | `tests/MpvShell.Rendering.WinUI.Tests/NativeRenderIntegrationTests.cs` | 像素读回仅用于测试；生产渲染无 CPU 逐帧读回 |
+| 2026-09-10 | P0-08/P0-09 | Windows x64，GUI | 原生 FilePicker 打开 result.mp4，时间轴跳转19秒，后续44秒暂停，查看详情与轨道 | 通过：正向视频、稳定暂停、H.264/1280×720/29.97 fps/AAC、单音轨 | `artifacts/mvp/evidence/local-playback-info.jpg` | 截图只保留本机，Git 忽略 |
+| 2026-09-10 | P0-05/P0-09 | 本机 HTTP 服务，GUI | sample.mp4 播放到 EOF，missing.mp4 返回404，从最近列表重新打开 sample.mp4 | 通过：显示红色错误后可恢复视频并清除错误，最近列表只含两条成功项 | `artifacts/mvp/evidence/http-playback.jpg`、`http-error.jpg` | 截图只保留本机；HLS 未单独实测 |
+| 2026-09-10 | P0-08/P0-09 | Windows x64，GUI | F11→Esc、音量/静音、Alt+F4 | 通过：1104×721→1368×912→1104×721；按钮/滑块响应；关闭后进程消失，按 render context→EGL/SwapChain/D3D11→core 释放 | `docs/implementation/mvp-progress.md`；本机会话日志 | 累计呈现7200帧；不等同于完整 DPI/多显示器验收 |
+| 2026-09-10 | SDR MVP 发布 | Release win-x64，.NET/WinUI 自包含 | `build/testing/publish-mvp.ps1`，从最终目录运行应用并播放 result.mp4 | 通过：四 DLL 哈希/x64/加载/API2.5、三次会话创建销毁；GUI 正向播放到23秒并暂停 | `artifacts/mvp/win-x64/publish-verification.json`、`artifacts/mvp/evidence/release-playback.jpg` | MVP 已完成；不代表 P0-11 清理或 Gate D 已验收 |
 
 ## 7. 技术决策记录
 
@@ -152,6 +163,8 @@ dotnet build mpv-winui.slnx -p:Platform=x64 --no-restore
 | 编号 | 日期 | 工作包 | 风险/异常 | 影响 | 处理状态 | 结论 |
 |---|---|---|---|---|---|---|
 | RISK-01 | 2026-08-28 | P0-01 | `.slnx` 缺少有效 `Debug|x64` 配置 | 文档规定的 x64 命令不可用 | 已解决 | P0-01 增加 x64 平台；实际属性、构建和测试均验证通过 |
+| RISK-02 | 2026-09-10 | P0-08 | 首轮真实视频上下倒置 | SDR 画面方向错误 | 已解决 | 直接纹理 pbuffer 使用 flipY=false，真实 GPU 色块与用户视频视觉复核均通过 |
+| RISK-03 | 2026-09-10 | P0-09 | 初轮 Computer Use GetCursorPos 拒绝访问 | 暂时无法继续 GUI 操作 | 已恢复 | 后续已完成原生文件选择、暂停、seek、详情和轨道验证，不再作为当前阻塞 |
 
 ## 9. 人工验证记录格式
 

@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 using System.Diagnostics;
+using System.Numerics;
 using Vortice.Direct3D11;
 using Vortice.DXGI;
 
@@ -9,14 +10,12 @@ namespace MpvShell.Rendering.WinUI;
 
 /// <summary>
 /// 封装 DXGI Composition SwapChain 的创建、Resize 和 Present。
-/// P0-06：仅用于验证 D3D11 -> Composition SwapChain -> SwapChainPanel 链路。
+/// 所有方法均由渲染线程调用，后备缓冲区直接交给 ANGLE。
 /// </summary>
 internal sealed class CompositionSwapChain : IDisposable
 {
     private readonly IDXGISwapChain1? _swapChain;
-    private readonly ID3D11Device _device;
     private readonly Format _format;
-    private ID3D11RenderTargetView? _renderTargetView;
     private bool _disposed;
 
     /// <summary>
@@ -24,7 +23,6 @@ internal sealed class CompositionSwapChain : IDisposable
     /// </summary>
     public CompositionSwapChain(IDXGIFactory2 factory, ID3D11Device device, uint width, uint height, Format format)
     {
-        _device = device;
         _format = format;
 
         var desc = new SwapChainDescription1
@@ -37,12 +35,11 @@ internal sealed class CompositionSwapChain : IDisposable
             BufferCount = 2,
             Scaling = Scaling.Stretch,
             SwapEffect = SwapEffect.FlipSequential,
-            AlphaMode = AlphaMode.Unspecified,
+            AlphaMode = AlphaMode.Ignore,
         };
 
         // ID3D11Device 是 SharpGen 的 ComObject，可直接作为 IUnknown 传入。
         _swapChain = factory.CreateSwapChainForComposition(device, desc, null);
-        CreateRenderTargetView();
 
         Debug.WriteLine($"[CompositionSwapChain] 已创建：{width}x{height}");
     }
@@ -69,36 +66,32 @@ internal sealed class CompositionSwapChain : IDisposable
         if (_swapChain is null)
             return;
 
-        // ResizeBuffers 要求先释放后备缓冲区的所有视图引用。
-        _renderTargetView?.Dispose();
-        _renderTargetView = null;
-
-        _swapChain.ResizeBuffers(2, width, height, _format, SwapChainFlags.None);
-        CreateRenderTargetView();
-        Debug.WriteLine($"[CompositionSwapChain] Resized to {width}x{height}");
+        // 调用方已经解除 EGL 对后备缓冲区的引用。
+        _swapChain.ResizeBuffers(2, width, height, _format, SwapChainFlags.None).CheckError();
+        Debug.WriteLine($"[CompositionSwapChain] 调整尺寸：{width}x{height}");
     }
 
     /// <summary>
-    /// 将后备缓冲区清为确定颜色并 Present 当前帧。
+    /// 获取一个后备缓冲区引用，调用方负责释放。
     /// </summary>
-    public void ClearAndPresent(ID3D11DeviceContext context, Vortice.Mathematics.Color4 color)
+    public ID3D11Texture2D GetBackBuffer()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
 
-        if (_swapChain is null || _renderTargetView is null)
-            return;
-
-        context.ClearRenderTargetView(_renderTargetView, color);
-        _swapChain.Present(1, PresentFlags.None);
+        return _swapChain!.GetBuffer<ID3D11Texture2D>(0);
     }
 
-    private void CreateRenderTargetView()
+    public void SetScale(double rasterizationScale)
     {
-        if (_swapChain is null)
-            return;
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        using var swapChain2 = _swapChain!.QueryInterface<IDXGISwapChain2>();
+        swapChain2.MatrixTransform = Matrix3x2.CreateScale((float)(1 / rasterizationScale));
+    }
 
-        using var backBuffer = _swapChain.GetBuffer<ID3D11Texture2D>(0);
-        _renderTargetView = _device.CreateRenderTargetView(backBuffer);
+    public void Present()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        _swapChain!.Present(1, PresentFlags.None).CheckError();
     }
 
     public void Dispose()
@@ -107,8 +100,6 @@ internal sealed class CompositionSwapChain : IDisposable
             return;
 
         _disposed = true;
-        _renderTargetView?.Dispose();
-        _renderTargetView = null;
         _swapChain?.Dispose();
     }
 }

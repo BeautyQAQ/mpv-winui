@@ -17,10 +17,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\MpvShell.Interop.VideoHost\MpvShell.Interop.VideoHost.csproj" />
     <ProjectReference Include="..\MpvShell.Player.Abstractions\MpvShell.Player.Abstractions.csproj" />
     <ProjectReference Include="..\MpvShell.Player.LibMpv\MpvShell.Player.LibMpv.csproj" />
-    <ProjectReference Include="..\MpvShell.Player.MpvSidecar\MpvShell.Player.MpvSidecar.csproj" />
     <ProjectReference Include="..\MpvShell.Rendering.WinUI\MpvShell.Rendering.WinUI.csproj" />
   </ItemGroup>
 
@@ -29,4 +27,18 @@
           CopyToOutputDirectory="PreserveNewest"
           TargetPath="runtimes\win-x64\native\%(Filename)%(Extension)" />
   </ItemGroup>
+
+  <!-- 未打包 WinUI 的应用 PRI 由 MRT Core 生成，但不会自动进入 .NET 发布清单。
+       App/MainWindow/PlayerPage 的 XBF 已作为 EmbeddedData 包含在此 PRI 中。 -->
+  <Target Name="IncludeAppPriInPublish"
+          BeforeTargets="ComputeResolvedFilesToPublishList"
+          Condition="'$(WindowsPackageType)' == 'None' and '$(AppxGeneratePriEnabled)' == 'true'">
+    <Error Condition="!Exists('$(ProjectPriFullPath)')"
+           Text="缺少应用 XAML 资源索引，请先完成 WinUI 构建：$(ProjectPriFullPath)" />
+    <ItemGroup>
+      <ResolvedFileToPublish Include="$(ProjectPriFullPath)"
+                             RelativePath="$(ProjectPriFileName)"
+                             CopyToPublishDirectory="PreserveNewest" />
+    </ItemGroup>
+  </Target>
 </Project>

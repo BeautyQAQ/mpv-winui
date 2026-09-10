@@ -1,162 +1,113 @@
 <?xml version="1.0" encoding="utf-8"?>
-<Page
-    x:Class="MpvShell.App.Views.PlayerPage"
+<Page x:Class="MpvShell.App.Views.PlayerPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:models="using:MpvShell.Player.Abstractions.Models"
-    Loaded="OnLoaded"
-    Unloaded="OnUnloaded">
-    <Grid x:Name="RootGrid"
-          Background="#0B1220"
-          PointerPressed="OnAnyPointerActivity"
-          PointerMoved="OnAnyPointerActivity">
-        <SwapChainPanel x:Name="VideoSurface"
-                        SizeChanged="OnVideoSurfaceSizeChanged" />
-        <Grid x:Name="InteractionSurface"
-              Background="Transparent"
-              PointerPressed="OnVideoPointerPressed"
-              PointerMoved="OnVideoPointerMoved"
-              PointerReleased="OnVideoPointerReleased" />
-
-        <Border VerticalAlignment="Top"
-                Margin="24"
-                Padding="16"
-                Background="#D9111827"
-                CornerRadius="18"
-                Visibility="{Binding ControlsVisibility}">
+    Loaded="OnLoaded" Unloaded="OnUnloaded" KeyDown="OnPlayerKeyDown">
+    <Grid x:Name="RootGrid" Background="#080C13"
+          PointerPressed="OnAnyPointerActivity" PointerMoved="OnAnyPointerActivity">
+        <SwapChainPanel x:Name="VideoSurface" IsHitTestVisible="False" SizeChanged="OnVideoSurfaceSizeChanged" />
+        <Grid x:Name="InteractionSurface" Background="Transparent"
+              PointerPressed="OnVideoPointerPressed" PointerMoved="OnVideoPointerMoved"
+              PointerReleased="OnVideoPointerReleased" PointerCanceled="OnVideoPointerReleased"
+              DoubleTapped="OnVideoDoubleTapped" />
+        <StackPanel x:Name="WelcomePanel" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="12" IsHitTestVisible="False">
+            <FontIcon Glyph="&#xE714;" FontSize="44" Foreground="#8DBBFA" />
+            <TextBlock Text="MpvShell" FontSize="30" FontWeight="SemiBold" HorizontalAlignment="Center" />
+            <TextBlock Text="打开本地视频，或粘贴网络媒体地址" Foreground="#AAB5C8" />
+        </StackPanel>
+        <Border VerticalAlignment="Top" Margin="20" Padding="16" Background="#DF111827"
+                CornerRadius="12" Visibility="{Binding ControlsVisibility}">
+            <ContentControl x:Name="OpenMediaPanel" IsEnabled="False" HorizontalContentAlignment="Stretch">
             <StackPanel Spacing="12">
-                <TextBlock Text="{Binding State.CurrentUrl, FallbackValue=未加载媒体}"
-                           FontSize="14"
-                           Opacity="0.85" />
-                <StackPanel Orientation="Horizontal" Spacing="12">
-                    <TextBox Width="520"
-                             PlaceholderText="粘贴 HTTP / HTTPS / m3u8 地址"
-                             Text="{Binding UrlText, Mode=TwoWay}" />
-                    <Button Content="播放"
-                            Height="48"
-                            MinWidth="96"
-                            Command="{Binding OpenUrlCommand}" />
-                </StackPanel>
+                <Grid ColumnSpacing="12">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                    <TextBlock Text="{Binding MediaTitle}" FontSize="16" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                    <TextBlock Grid.Column="1" Text="本地 / HTTP / HLS" Foreground="#8B9BB4" VerticalAlignment="Center" />
+                </Grid>
+                <Grid ColumnSpacing="8">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                    <TextBox x:Name="MediaInput" PlaceholderText="视频文件路径或 HTTP / HTTPS 地址" AutomationProperties.Name="媒体地址"
+                             Text="{Binding UrlText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" KeyDown="OnMediaInputKeyDown" />
+                    <Button Grid.Column="1" Content="打开地址" Command="{Binding OpenUrlCommand}" />
+                    <Button Grid.Column="2" Content="打开文件" Click="OnOpenFileClicked" />
+                </Grid>
             </StackPanel>
+            </ContentControl>
         </Border>
-
-        <Border VerticalAlignment="Top"
-                Margin="24,132,24,0"
-                Padding="12"
-                Background="#CC7F1D1D"
-                CornerRadius="12"
-                Visibility="{Binding ErrorVisibility}">
-            <TextBlock Text="{Binding ErrorMessage}"
-                       TextWrapping="WrapWholeWords"
-                       Foreground="#FFFEE2E2" />
+        <Border VerticalAlignment="Top" Margin="20,145,20,0" Padding="12" Background="#ED7F1D1D"
+                CornerRadius="8" Visibility="{Binding ErrorVisibility}">
+            <TextBlock Text="{Binding ErrorMessage}" TextWrapping="WrapWholeWords" Foreground="#FFFEE2E2" />
         </Border>
-
-        <Border HorizontalAlignment="Right"
-                VerticalAlignment="Top"
-                Margin="24"
-                Padding="16"
-                Background="#E5111827"
-                CornerRadius="16"
-                Visibility="{Binding InfoPanelVisibility}">
-            <StackPanel Spacing="8" MaxWidth="360">
-                <TextBlock Text="详细信息" FontSize="20" FontWeight="SemiBold" />
+        <Border HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="20,20,20,170" Padding="20"
+                Background="#F0111827" CornerRadius="12" Visibility="{Binding InfoPanelVisibility}">
+            <StackPanel Spacing="10" MaxWidth="400">
+                <TextBlock Text="媒体信息" FontSize="20" FontWeight="SemiBold" />
                 <TextBlock Text="{Binding InfoPanel.VideoSummary}" TextWrapping="WrapWholeWords" />
                 <TextBlock Text="{Binding InfoPanel.AudioSummary}" TextWrapping="WrapWholeWords" />
                 <TextBlock Text="{Binding InfoPanel.HdrSummary}" TextWrapping="WrapWholeWords" />
+                <Button Content="关闭" Command="{Binding ToggleInfoPanelCommand}" />
             </StackPanel>
         </Border>
-
-        <Border HorizontalAlignment="Left"
-                VerticalAlignment="Bottom"
-                Margin="24,24,24,140"
-                Padding="16"
-                Background="#E50F172A"
-                CornerRadius="16"
-                Visibility="{Binding TracksVisibility}">
-            <StackPanel Spacing="12" MaxWidth="360">
+        <Border HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="20,20,20,170" Padding="20"
+                Background="#F0111827" CornerRadius="12" Visibility="{Binding TracksVisibility}">
+            <StackPanel Spacing="12" Width="300">
                 <TextBlock Text="字幕 / 音轨" FontSize="20" FontWeight="SemiBold" />
-                <ItemsControl ItemsSource="{Binding Tracks}">
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate x:DataType="models:TrackInfo">
-                            <Button HorizontalAlignment="Stretch"
-                                    Padding="12"
-                                    Command="{Binding DataContext.SelectTrackCommand, ElementName=RootGrid}"
-                                    CommandParameter="{Binding}">
-                                <StackPanel Spacing="4">
-                                    <TextBlock Text="{Binding Title, TargetNullValue=未命名轨道}" />
-                                    <TextBlock Opacity="0.75"
-                                               Text="{Binding Kind}" />
+                <ScrollViewer MaxHeight="260">
+                    <ListView ItemsSource="{Binding Tracks}" IsItemClickEnabled="True" ItemClick="OnTrackClicked" SelectionMode="None">
+                        <ListView.ItemTemplate><DataTemplate>
+                            <StackPanel Spacing="3" Padding="4">
+                                <TextBlock Text="{Binding Title, TargetNullValue=未命名轨道}" TextWrapping="Wrap" />
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <TextBlock Text="{Binding Kind}" Foreground="#8DBBFA" />
+                                    <TextBlock Text="{Binding Language}" />
+                                    <CheckBox IsChecked="{Binding Selected, Mode=OneWay}" IsHitTestVisible="False" IsTabStop="False" MinWidth="0" />
                                 </StackPanel>
-                            </Button>
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
+                            </StackPanel>
+                        </DataTemplate></ListView.ItemTemplate>
+                    </ListView>
+                </ScrollViewer>
+                <Button Content="关闭" Command="{Binding ToggleTracksCommand}" />
             </StackPanel>
         </Border>
-
-        <Border HorizontalAlignment="Right"
-                VerticalAlignment="Bottom"
-                Margin="24,24,24,140"
-                Padding="16"
-                Background="#E51F2937"
-                CornerRadius="16"
-                Visibility="{Binding OsdVisibility}">
-            <StackPanel Spacing="12" MaxWidth="360">
-                <TextBlock Text="OSD" FontSize="20" FontWeight="SemiBold" />
-                <Button Content="字幕 / 音轨"
-                        Command="{Binding ToggleTracksCommand}" />
-                <Button Content="详细信息"
-                        Command="{Binding ToggleInfoPanelCommand}" />
-                <TextBlock Margin="0,8,0,0"
-                           Text="最近 URL"
-                           FontSize="16"
-                           FontWeight="SemiBold" />
-                <ItemsControl ItemsSource="{Binding RecentUrls}">
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate>
-                            <TextBlock Text="{Binding}"
-                                       TextWrapping="WrapWholeWords" />
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
+        <Border HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="20,20,20,170" Padding="20"
+                Background="#F0111827" CornerRadius="12" Visibility="{Binding OsdVisibility}">
+            <StackPanel Spacing="10" Width="340">
+                <TextBlock Text="最近打开" FontSize="20" FontWeight="SemiBold" />
+                <ListView ItemsSource="{Binding RecentUrls}" IsItemClickEnabled="True" ItemClick="OnRecentMediaClicked" SelectionMode="None" MaxHeight="260">
+                    <ListView.ItemTemplate><DataTemplate><TextBlock Text="{Binding}" TextTrimming="CharacterEllipsis" /></DataTemplate></ListView.ItemTemplate>
+                </ListView>
+                <TextBlock Text="空格 播放/暂停 · ← → 快退/快进 · F11 全屏" FontSize="12" Foreground="#AAB5C8" TextWrapping="Wrap" />
+                <Button Content="关闭" Command="{Binding ToggleOsdCommand}" />
             </StackPanel>
         </Border>
-
-        <Border VerticalAlignment="Bottom"
-                Margin="24"
-                Padding="20"
-                Background="#CC111827"
-                CornerRadius="20"
-                Visibility="{Binding ControlsVisibility}">
-            <StackPanel Spacing="16">
-                <Slider Height="32"
-                        Minimum="0"
-                        Maximum="{Binding State.DurationSeconds}"
-                        Value="{Binding State.PositionSeconds, Mode=TwoWay}"
-                        ManipulationCompleted="OnTimelineManipulationCompleted" />
-                <StackPanel Orientation="Horizontal" Spacing="12">
-                    <Button Content="-15s"
-                            MinWidth="120"
-                            Height="56"
-                            Command="{Binding SeekBackwardCommand}" />
-                    <Button Content="播放 / 暂停"
-                            MinWidth="160"
-                            Height="56"
-                            Command="{Binding TogglePlayPauseCommand}" />
-                    <Button Content="+30s"
-                            MinWidth="120"
-                            Height="56"
-                            Command="{Binding SeekForwardCommand}" />
-                    <Button Content="字幕 / 音轨"
-                            MinWidth="160"
-                            Height="56"
-                            Command="{Binding ToggleTracksCommand}" />
-                    <Button Content="OSD"
-                            MinWidth="120"
-                            Height="56"
-                            Command="{Binding ToggleOsdCommand}" />
-                </StackPanel>
+        <Border VerticalAlignment="Bottom" Margin="20" Padding="16" Background="#E6111827"
+                CornerRadius="12" Visibility="{Binding ControlsVisibility}">
+            <ContentControl x:Name="TransportControls" IsEnabled="False" HorizontalContentAlignment="Stretch">
+            <StackPanel Spacing="6">
+                <Grid ColumnSpacing="16">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                    <Slider x:Name="Timeline" Minimum="0" Maximum="1" ValueChanged="OnTimelineValueChanged" AutomationProperties.Name="播放进度" />
+                    <TextBlock Grid.Column="1" Text="{Binding TimeLabel}" VerticalAlignment="Center" FontFamily="Consolas" />
+                </Grid>
+                <Grid ColumnSpacing="12">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <Button Content="−15s" Command="{Binding SeekBackwardCommand}" Height="44" />
+                        <Button Content="{Binding PlayPauseLabel}" Command="{Binding TogglePlayPauseCommand}" Height="44" MinWidth="78" />
+                        <Button Content="+30s" Command="{Binding SeekForwardCommand}" Height="44" />
+                        <Button Content="{Binding MuteLabel}" Command="{Binding ToggleMuteCommand}" Height="44" />
+                        <Slider x:Name="VolumeSlider" Width="90" Minimum="0" Maximum="100" Value="100"
+                                ValueChanged="OnVolumeValueChanged" AutomationProperties.Name="音量" VerticalAlignment="Center" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6">
+                        <Button Content="轨道" Command="{Binding ToggleTracksCommand}" Height="44" />
+                        <Button Content="信息" Command="{Binding ToggleInfoPanelCommand}" Height="44" />
+                        <Button Content="最近" Command="{Binding ToggleOsdCommand}" Height="44" />
+                        <Button x:Name="FullscreenButton" Content="全屏" Click="OnFullscreenClicked" Height="44" />
+                    </StackPanel>
+                </Grid>
             </StackPanel>
+            </ContentControl>
         </Border>
     </Grid>
 </Page>

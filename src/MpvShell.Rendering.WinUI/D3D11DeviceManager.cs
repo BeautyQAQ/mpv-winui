@@ -10,7 +10,7 @@ namespace MpvShell.Rendering.WinUI;
 
 /// <summary>
 /// 管理 D3D11 设备、DXGI 适配器和工厂的生命周期。
-/// P0-06：不依赖 libmpv，仅用于创建 Composition SwapChain 验证。
+/// 设备由 ANGLE 和 Composition SwapChain 共享，访问限制在渲染线程。
 /// </summary>
 internal sealed class D3D11DeviceManager : IDisposable
 {
