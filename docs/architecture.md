@@ -232,7 +232,7 @@ tests/
 - `video-params`、`audio-params`
 - `video-format`、`video-codec`、`audio-codec-name`
 - `hwdec-current`、`estimated-vf-fps`、`container-fps`
-- `vo-drop-frame-count`、`decoder-frame-drop-count`
+- `frame-drop-count`、`decoder-frame-drop-count`（对应锁定 mpv v0.41.0 的实际属性）
 
 事件层输出应用自己的强类型事件，例如 `PlaybackStateChanged`、`TracksChanged`、`MediaInfoChanged`、`BufferingChanged`、`EndReached`、`PlayerFaulted` 和 `RendererFaulted`。
 

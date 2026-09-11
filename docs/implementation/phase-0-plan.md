@@ -1,6 +1,6 @@
 # Phase 0 技术可行性实施计划
 
-> 状态：待执行  
+> 状态：实施中；当前进度见 `phase-0-progress.md`
 > 架构基线：`docs/architecture.md` v1.1  
 > 编制日期：2026-08-28  
 > 适用范围：Phase 0A～0D，不包含完整 V1 产品功能

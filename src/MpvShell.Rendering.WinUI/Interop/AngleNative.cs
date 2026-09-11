@@ -15,6 +15,9 @@ internal static unsafe partial class AngleNative
     internal const int D3D11DeviceAngle = 0x33A1;
     internal const uint PlatformDeviceExt = 0x313F;
     internal const uint D3DTextureAngle = 0x33A3;
+    internal const int ColorComponentType = 0x3339;
+    internal const int FixedComponent = 0x333A;
+    internal const int FloatComponent = 0x333B;
 
     static AngleNative() => NativeDependencyResolver.RegisterForAssembly(typeof(AngleNative).Assembly);
 
@@ -34,6 +37,8 @@ internal static unsafe partial class AngleNative
     internal static partial int QueryDeviceAttribute(nint device, int attribute, out nint value);
     [LibraryImport("EGL", EntryPoint = "eglChooseConfig")]
     internal static partial int ChooseConfig(nint display, int* attributes, out nint config, int configSize, out int count);
+    [LibraryImport("EGL", EntryPoint = "eglGetConfigAttrib")]
+    internal static partial int GetConfigAttribute(nint display, nint config, int attribute, out int value);
     [LibraryImport("EGL", EntryPoint = "eglBindAPI")]
     internal static partial int BindApi(uint api);
     [LibraryImport("EGL", EntryPoint = "eglCreateContext")]
@@ -64,6 +69,8 @@ internal static unsafe partial class AngleNative
     internal static partial void ClearColor(float red, float green, float blue, float alpha);
     [LibraryImport("GLESv2", EntryPoint = "glClear")]
     internal static partial void Clear(uint mask);
+    [LibraryImport("GLESv2", EntryPoint = "glClearBufferfv")]
+    internal static partial void ClearBuffer(uint buffer, int drawBuffer, float* values);
     [LibraryImport("GLESv2", EntryPoint = "glBindFramebuffer")]
     internal static partial void BindFramebuffer(uint target, uint framebuffer);
 }

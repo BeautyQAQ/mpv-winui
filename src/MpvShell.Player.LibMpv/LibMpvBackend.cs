@@ -14,7 +14,7 @@ public sealed class LibMpvBackend : IPlayerBackend
     private readonly MpvPlayerSession _session;
     private readonly object _stateGate = new();
     private readonly SemaphoreSlim _loadGate = new(1, 1);
-    private readonly Channel<PlayerEvent> _events = Channel.CreateBounded<PlayerEvent>(new BoundedChannelOptions(256)
+    private readonly Channel<QueuedPlayerEvent> _events = Channel.CreateBounded<QueuedPlayerEvent>(new BoundedChannelOptions(256)
     {
         SingleReader = true, FullMode = BoundedChannelFullMode.DropOldest, AllowSynchronousContinuations = false,
     });
@@ -27,6 +27,8 @@ public sealed class LibMpvBackend : IPlayerBackend
     private bool _loaded;
     private bool _ended;
     private bool _awaitingStart;
+    private bool _mediaActive;
+    private bool _isBuffering;
     private TaskCompletionSource? _loadCompletion;
     private int _disposed;
 
@@ -57,6 +59,8 @@ public sealed class LibMpvBackend : IPlayerBackend
                 _state = _state with { CurrentUrl = source };
                 _loadCompletion = completion;
                 _awaitingStart = true;
+                _mediaActive = false;
+                PublishBuffering(false);
             }
             await _session.SetPropertyAsync("pause", false, cancellationToken).ConfigureAwait(false);
             await _session.CommandAsync(["loadfile", source, "replace"], cancellationToken).ConfigureAwait(false);
@@ -150,11 +154,21 @@ public sealed class LibMpvBackend : IPlayerBackend
 
     public async IAsyncEnumerable<PlayerEvent> ObserveEventsAsync([EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        await foreach (var playerEvent in _events.Reader.ReadAllAsync(cancellationToken).ConfigureAwait(false))
-            yield return playerEvent;
+        var isBuffering = false;
+        await foreach (var queued in _events.Reader.ReadAllAsync(cancellationToken).ConfigureAwait(false))
+        {
+            // DropOldest 可能丢掉唯一的缓冲结束通知。每个事件携带发布当时的快照，
+            // 在下一个存活事件之前补齐状态；不能读当前全局值，否则会把未来状态插到旧事件前。
+            if (queued.IsBuffering != isBuffering)
+            {
+                isBuffering = queued.IsBuffering;
+                yield return new BufferingChanged(isBuffering);
+            }
+            if (queued.Event is not BufferingChanged) yield return queued.Event;
+        }
     }
 
-    private void OnSessionEvent(SessionEvent playerEvent)
+    internal void OnSessionEvent(SessionEvent playerEvent)
     {
         lock (_stateGate)
         {
@@ -165,6 +179,8 @@ public sealed class LibMpvBackend : IPlayerBackend
             if (playerEvent.Error is not null)
             {
                 Trace.WriteLine($"[libmpv] 播放错误：{playerEvent.Error.Message}");
+                _mediaActive = false;
+                PublishBuffering(false);
                 Publish(new BackendFaulted(playerEvent.Error.Message));
             }
 
@@ -174,6 +190,8 @@ public sealed class LibMpvBackend : IPlayerBackend
                     _awaitingStart = false;
                     _loaded = false;
                     _ended = false;
+                    _mediaActive = true;
+                    PublishBuffering(false);
                     _properties.Clear();
                     _state = _state with { PositionSeconds = 0, DurationSeconds = 0 };
                     _tracks = Array.Empty<TrackInfo>();
@@ -191,6 +209,8 @@ public sealed class LibMpvBackend : IPlayerBackend
                     break;
                 case MpvEventId.EndFile:
                     _loaded = false;
+                    _mediaActive = false;
+                    PublishBuffering(false);
                     if (_loadCompletion is not null && !_loadCompletion.Task.IsCompleted)
                         _loadCompletion.TrySetException(playerEvent.Error ?? new InvalidOperationException("媒体加载已中止。"));
                     if (playerEvent.Value is 0) MarkEnded();
@@ -200,6 +220,8 @@ public sealed class LibMpvBackend : IPlayerBackend
                     _loadCompletion?.TrySetException(playerEvent.Error ?? new InvalidOperationException("播放器会话已关闭。"));
                     _loaded = false;
                     _idle = true;
+                    _mediaActive = false;
+                    PublishBuffering(false);
                     PublishState();
                     if (playerEvent.Error is null) Publish(new BackendFaulted("播放器会话已关闭。"));
                     break;
@@ -229,7 +251,7 @@ public sealed class LibMpvBackend : IPlayerBackend
             case "volume" when value is not null:
                 _state = _state with { Volume = (int)Math.Round(Number(value)) }; PublishState(); break;
             case "mute": _state = _state with { IsMuted = value is true }; PublishState(); break;
-            case "paused-for-cache": Publish(new BufferingChanged(value is true)); break;
+            case "paused-for-cache": PublishBuffering(value is true && _mediaActive && !_ended); break;
             case "track-list":
                 _tracks = ParseTracks(value); Publish(new TracksChanged(_tracks)); break;
             default:
@@ -243,6 +265,7 @@ public sealed class LibMpvBackend : IPlayerBackend
     {
         if (_ended) return;
         _ended = true;
+        PublishBuffering(false);
         Trace.WriteLine("[libmpv] 播放结束 EOF。");
         Publish(new EndReached());
     }
@@ -253,7 +276,16 @@ public sealed class LibMpvBackend : IPlayerBackend
         Publish(new PlaybackStateChanged(_state));
     }
 
-    private void Publish(PlayerEvent playerEvent) => _events.Writer.TryWrite(playerEvent);
+    private void PublishBuffering(bool isBuffering)
+    {
+        if (_isBuffering == isBuffering) return;
+        _isBuffering = isBuffering;
+        Publish(new BufferingChanged(isBuffering));
+    }
+
+    private void Publish(PlayerEvent playerEvent) => _events.Writer.TryWrite(new(playerEvent, _isBuffering));
+
+    private readonly record struct QueuedPlayerEvent(PlayerEvent Event, bool IsBuffering);
 
     internal static IReadOnlyList<TrackInfo> ParseTracks(object? value)
     {
@@ -281,19 +313,47 @@ public sealed class LibMpvBackend : IPlayerBackend
         var width = Number(video?.GetValueOrDefault("w"));
         var height = Number(video?.GetValueOrDefault("h"));
         var gamma = Text(video?.GetValueOrDefault("gamma"));
-        var hdr = gamma switch { "pq" => "HDR10（当前 SDR 输出）", "hlg" => "HLG（当前 SDR 输出）", null => null, _ => "SDR" };
+        var dynamicRange = gamma switch { "pq" => VideoDynamicRange.Pq, "hlg" => VideoDynamicRange.Hlg, null => VideoDynamicRange.Unknown, _ => VideoDynamicRange.Sdr };
+        var hdr = dynamicRange switch { VideoDynamicRange.Pq => "HDR10 / PQ", VideoDynamicRange.Hlg => "HLG", VideoDynamicRange.Sdr => "SDR", _ => null };
         var fps = Number(properties.GetValueOrDefault("estimated-vf-fps"));
         if (fps <= 0) fps = Number(properties.GetValueOrDefault("container-fps"));
-        var bits = Number(video?.GetValueOrDefault("plane-depth"));
+        // mpv 0.41 不暴露 plane-depth；硬件帧按底层像素格式识别，未知格式不猜测。
+        var bits = PixelBitDepth(Text(video?.GetValueOrDefault("hw-pixelformat")) ?? Text(video?.GetValueOrDefault("pixelformat")));
         var cache = properties.GetValueOrDefault("cache-buffering-state");
+        var decoder = Text(properties.GetValueOrDefault("hwdec-current"));
+        var decodeMode = decoder switch
+        {
+            null or "" => VideoDecodeMode.Unknown,
+            "no" => VideoDecodeMode.Software,
+            "d3d11va" => VideoDecodeMode.D3D11,
+            _ when decoder.EndsWith("-copy", StringComparison.Ordinal) => VideoDecodeMode.CopyBack,
+            _ => VideoDecodeMode.OtherHardware,
+        };
+        var diagnostics = new VideoDecodeDiagnostics(decodeMode, decoder,
+            Text(properties.GetValueOrDefault("hwdec-interop")), Text(video?.GetValueOrDefault("pixelformat")),
+            Text(video?.GetValueOrDefault("hw-pixelformat")),
+            Counter(properties.GetValueOrDefault("decoder-frame-drop-count")),
+            Counter(properties.GetValueOrDefault("frame-drop-count")));
         return new InfoPanelSnapshot(
             Text(properties.GetValueOrDefault("video-codec")), Text(properties.GetValueOrDefault("audio-codec-name")), hdr,
             width > 0 && height > 0 ? $"{width:0} × {height:0}" : null,
-            bits > 0 ? $"{bits:0} bit" : null, fps > 0 ? $"{fps:0.###} fps" : null,
-            cache is null ? null : $"缓冲 {Number(cache):0}%");
+            bits is not null ? $"{bits} bit" : null, fps > 0 ? $"{fps:0.###} fps" : null,
+            cache is null ? null : $"缓冲 {Number(cache):0}%", diagnostics, dynamicRange);
     }
 
     private static string? Text(object? value) => value as string;
+    private static int? PixelBitDepth(string? format) => format switch
+    {
+        "nv12" or "nv21" or "yuv420p" or "yuv422p" or "yuv444p" or "gbrp" or "rgb24" or "bgr24" or "rgba" or "bgra" => 8,
+        "p010" or "p010le" or "p010be" or "yuv420p10" or "yuv420p10le" or "yuv420p10be" or
+            "yuv422p10" or "yuv422p10le" or "yuv422p10be" or "yuv444p10" or "yuv444p10le" or "yuv444p10be" or "gbrp10" => 10,
+        "p012" or "p012le" or "p012be" or "yuv420p12" or "yuv420p12le" or "yuv420p12be" or
+            "yuv422p12" or "yuv422p12le" or "yuv422p12be" or "yuv444p12" or "yuv444p12le" or "yuv444p12be" or "gbrp12" => 12,
+        "p016" or "p016le" or "p016be" or "yuv420p16" or "yuv420p16le" or "yuv420p16be" or
+            "yuv422p16" or "yuv422p16le" or "yuv422p16be" or "yuv444p16" or "yuv444p16le" or "yuv444p16be" or "gbrp16" => 16,
+        _ => null,
+    };
+    private static long? Counter(object? value) => value switch { long count when count >= 0 => count, int count when count >= 0 => count, _ => null };
     private static double Number(object? value) => value switch { double number => number, long integer => integer, int integer => integer, _ => 0 };
     private void ThrowIfDisposed() => ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
 
@@ -302,7 +362,12 @@ public sealed class LibMpvBackend : IPlayerBackend
         if (Interlocked.Exchange(ref _disposed, 1) == 0)
         {
             _session.EventReceived -= OnSessionEvent;
-            lock (_stateGate) _loadCompletion?.TrySetException(new ObjectDisposedException(nameof(LibMpvBackend)));
+            lock (_stateGate)
+            {
+                _loadCompletion?.TrySetException(new ObjectDisposedException(nameof(LibMpvBackend)));
+                _mediaActive = false;
+                PublishBuffering(false);
+            }
             _events.Writer.TryComplete();
         }
         await _session.DisposeAsync().ConfigureAwait(false);

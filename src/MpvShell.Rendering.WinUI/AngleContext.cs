@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 using MpvShell.Rendering.WinUI.Interop;
 using Vortice.Direct3D11;
+using Vortice.DXGI;
 
 namespace MpvShell.Rendering.WinUI;
 
@@ -14,13 +15,12 @@ internal sealed unsafe class AngleContext : IDisposable
     private nint _device;
     private nint _display;
     private nint _context;
-    private nint _config;
     private nint _parkingSurface;
     private nint _textureSurface;
     private ID3D11Texture2D? _texture;
     private bool _disposed;
 
-    public AngleContext(nint d3d11Device)
+    public AngleContext(nint d3d11Device, Format format = Format.B8G8R8A8_UNorm)
     {
         try
         {
@@ -33,6 +33,7 @@ internal sealed unsafe class AngleContext : IDisposable
             Require(_display != 0, "eglGetPlatformDisplayEXT");
             Require(AngleNative.Initialize(_display, out _, out _) != 0, "eglInitialize");
             RequireExtension(_display, "EGL_ANGLE_d3d_texture_client_buffer");
+            RequireExtension(_display, "EGL_KHR_no_config_context");
 
             Require(AngleNative.QueryDisplayAttribute(_display, AngleNative.DeviceExt, out var displayDevice) != 0,
                 "eglQueryDisplayAttribEXT");
@@ -41,21 +42,16 @@ internal sealed unsafe class AngleContext : IDisposable
             if (nativeDevice != d3d11Device)
                 throw new InvalidOperationException("ANGLE 与 Composition SwapChain 没有使用同一 D3D11 设备。");
 
-            int* configAttributes = stackalloc int[]
-            {
-                0x3033, 0x0001, // EGL_SURFACE_TYPE, EGL_PBUFFER_BIT
-                0x3024, 8, 0x3023, 8, 0x3022, 8, 0x3021, 8, // RGBA
-                0x3040, 0x0040, // EGL_RENDERABLE_TYPE, EGL_OPENGL_ES3_BIT
-                AngleNative.None,
-            };
-            Require(AngleNative.ChooseConfig(_display, configAttributes, out _config, 1, out var count) != 0 && count == 1,
-                "eglChooseConfig(ES3/RGBA8)");
+            var parkingConfig = ChooseConfig(Format.B8G8R8A8_UNorm);
+            SetFormat(format);
             Require(AngleNative.BindApi(0x30A0) != 0, "eglBindAPI(OpenGL ES)");
             int* contextAttributes = stackalloc int[] { 0x3098, 3, AngleNative.None };
-            _context = AngleNative.CreateContext(_display, _config, 0, contextAttributes);
+            // 无 config context 可以绑定不同位深的 EGL surface，切换 SDR/PQ10 时
+            // 保留 libmpv 的 GL 资源、解码器与当前暂停帧；锁定 ANGLE D3D11 支持该扩展。
+            _context = AngleNative.CreateContext(_display, 0, 0, contextAttributes);
             Require(_context != 0, "eglCreateContext(ES3)");
             int* surfaceAttributes = stackalloc int[] { 0x3057, 1, 0x3056, 1, AngleNative.None };
-            _parkingSurface = AngleNative.CreatePbufferSurface(_display, _config, surfaceAttributes);
+            _parkingSurface = AngleNative.CreatePbufferSurface(_display, parkingConfig, surfaceAttributes);
             Require(_parkingSurface != 0, "eglCreatePbufferSurface");
             MakeParkingCurrent();
             Description = Marshal.PtrToStringUTF8(AngleNative.GlGetString(0x1F01)) ?? "ANGLE D3D11";
@@ -68,6 +64,8 @@ internal sealed unsafe class AngleContext : IDisposable
     }
 
     public string Description { get; } = string.Empty;
+    public int GlInternalFormat { get; private set; }
+    public int ColorDepth { get; private set; }
 
     public nint GetProcAddress(string name)
     {
@@ -79,13 +77,28 @@ internal sealed unsafe class AngleContext : IDisposable
     public void ImportBackBuffer(ID3D11Texture2D texture)
     {
         VerifyThread();
-        ReleaseBackBuffer();
-        _texture = texture;
-        int* attributes = stackalloc int[] { AngleNative.None };
-        _textureSurface = AngleNative.CreatePbufferFromClientBuffer(
-            _display, AngleNative.D3DTextureAngle, texture.NativePointer, _config, attributes);
-        Require(_textureSurface != 0, "eglCreatePbufferFromClientBuffer(D3D11)");
-        MakeBackBufferCurrent();
+        ArgumentNullException.ThrowIfNull(texture);
+        try
+        {
+            var format = texture.Description.Format;
+            var config = ChooseConfig(format);
+            ReleaseBackBuffer();
+            _texture = texture;
+            int* attributes = stackalloc int[] { AngleNative.None };
+            // D3D texture 的实际格式定义 EGL storage。不要在非TYPELESS纹理上
+            // 指定 EGL_GL_COLORSPACE；PQ 编码由 mpv 负责、DXGI ColorSpace 由宿主负责。
+            _textureSurface = AngleNative.CreatePbufferFromClientBuffer(
+                _display, AngleNative.D3DTextureAngle, texture.NativePointer, config, attributes);
+            Require(_textureSurface != 0, $"eglCreatePbufferFromClientBuffer({format})");
+            MakeBackBufferCurrent();
+            SetFormat(format);
+        }
+        catch
+        {
+            // 本方法接管传入引用，包括格式协商失败路径。
+            if (!ReferenceEquals(_texture, texture)) texture.Dispose();
+            throw;
+        }
     }
 
     public void MakeBackBufferCurrent()
@@ -102,11 +115,14 @@ internal sealed unsafe class AngleContext : IDisposable
     }
 
     public void ClearBlack()
+        => ClearColor(0, 0, 0, 1);
+
+    internal void ClearColor(float red, float green, float blue, float alpha)
     {
         MakeBackBufferCurrent();
         AngleNative.BindFramebuffer(0x8D40, 0);
-        AngleNative.ClearColor(0, 0, 0, 1);
-        AngleNative.Clear(0x00004000);
+        float* values = stackalloc float[] { red, green, blue, alpha };
+        AngleNative.ClearBuffer(0x1800, 0, values); // GL_COLOR；保留浮点目标超过1/负值。
     }
 
     /// <summary>
@@ -162,6 +178,48 @@ internal sealed unsafe class AngleContext : IDisposable
 
     private void MakeCurrent(nint surface) => Require(
         AngleNative.MakeCurrent(_display, surface, surface, _context) != 0, "eglMakeCurrent");
+
+    private nint ChooseConfig(Format format)
+    {
+        var (bits, alpha, component, _) = DescribeFormat(format);
+        RequireExtension(_display, "EGL_EXT_pixel_format_float");
+        int* attributes = stackalloc int[]
+        {
+            0x3033, 0x0001, // EGL_SURFACE_TYPE, EGL_PBUFFER_BIT
+            0x3024, bits, 0x3023, bits, 0x3022, bits, 0x3021, alpha,
+            0x3040, 0x0040, // EGL_RENDERABLE_TYPE, EGL_OPENGL_ES3_BIT
+            0x3025, 0, 0x3026, 0, 0x3031, 0, // 无 depth/stencil/MSAA
+            AngleNative.ColorComponentType, component,
+            AngleNative.None,
+        };
+        Require(AngleNative.ChooseConfig(_display, attributes, out var config, 1, out var count) != 0 && count == 1,
+            $"eglChooseConfig({format})");
+        // eglChooseConfig 位数条件是下限；禁止接受高位深请求被错误的 config 满足。
+        foreach (var (attribute, expected) in new[] { (0x3024, bits), (0x3023, bits), (0x3022, bits), (0x3021, alpha),
+            (AngleNative.ColorComponentType, component) })
+        {
+            Require(AngleNative.GetConfigAttribute(_display, config, attribute, out var value) != 0,
+                "eglGetConfigAttrib");
+            if (value != expected)
+                throw new NotSupportedException($"ANGLE 无法提供精确的 {format} 帧缓冲配置。");
+        }
+        return config;
+    }
+
+    private void SetFormat(Format format)
+    {
+        var description = DescribeFormat(format);
+        ColorDepth = description.Bits;
+        GlInternalFormat = description.GlFormat;
+    }
+
+    private static (int Bits, int Alpha, int Component, int GlFormat) DescribeFormat(Format format) => format switch
+    {
+        Format.B8G8R8A8_UNorm or Format.R8G8B8A8_UNorm => (8, 8, AngleNative.FixedComponent, 0x8058), // GL_RGBA8
+        Format.R10G10B10A2_UNorm => (10, 2, AngleNative.FixedComponent, 0x8059), // GL_RGB10_A2
+        Format.R16G16B16A16_Float => (16, 16, AngleNative.FloatComponent, 0x881A), // GL_RGBA16F
+        _ => throw new NotSupportedException($"尚未定义 {format} 的 EGL/GL 输出格式。"),
+    };
 
     private static void RequireExtension(nint display, string extension)
     {

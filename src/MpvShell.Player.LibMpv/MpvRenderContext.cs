@@ -69,20 +69,23 @@ public sealed class MpvRenderContext : IDisposable
         return (MpvNative.RenderContextUpdate(_context) & 1) != 0;
     }
 
-    public unsafe void Render(int framebuffer, int width, int height, bool flipY = false)
+    public unsafe void Render(int framebuffer, int width, int height, bool flipY = false, int internalFormat = 0, int depth = 8)
     {
         EnsureThread();
         ArgumentOutOfRangeException.ThrowIfNegative(framebuffer);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(width);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(height);
-        var target = new MpvOpenGlFramebuffer { Framebuffer = framebuffer, Width = width, Height = height };
+        ArgumentOutOfRangeException.ThrowIfNegative(internalFormat);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(depth);
+        var target = new MpvOpenGlFramebuffer { Framebuffer = framebuffer, Width = width, Height = height, InternalFormat = internalFormat };
         var flip = flipY ? 1 : 0;
         var blockForTargetTime = 0; // video-timing-offset=0；呈现时机由渲染循环和 vsync 管理。
-        var parameters = stackalloc MpvRenderParameter[4];
+        var parameters = stackalloc MpvRenderParameter[5];
         parameters[0] = new() { Type = 3, Data = (nint)(&target) };
         parameters[1] = new() { Type = 4, Data = (nint)(&flip) };
         parameters[2] = new() { Type = 12, Data = (nint)(&blockForTargetTime) };
-        parameters[3] = default;
+        parameters[3] = new() { Type = 5, Data = (nint)(&depth) }; // MPV_RENDER_PARAM_DEPTH，控制输出抖动精度。
+        parameters[4] = default;
         MpvNative.Check(MpvNative.RenderContextRender(_context, (nint)parameters), "渲染视频帧");
         if (!_rendered)
         {

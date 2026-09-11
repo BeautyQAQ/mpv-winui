@@ -15,6 +15,14 @@
             <TextBlock Text="MpvShell" FontSize="30" FontWeight="SemiBold" HorizontalAlignment="Center" />
             <TextBlock Text="打开本地视频，或粘贴网络媒体地址" Foreground="#AAB5C8" />
         </StackPanel>
+        <Border HorizontalAlignment="Center" VerticalAlignment="Center" Padding="18,12"
+                Background="#D9111827" CornerRadius="10" IsHitTestVisible="False"
+                Visibility="{Binding BufferingVisibility}">
+            <StackPanel Orientation="Horizontal" Spacing="12">
+                <ProgressRing Width="24" Height="24" IsActive="{Binding IsBuffering}" />
+                <TextBlock Text="正在缓冲…" VerticalAlignment="Center" />
+            </StackPanel>
+        </Border>
         <Border VerticalAlignment="Top" Margin="20" Padding="16" Background="#DF111827"
                 CornerRadius="12" Visibility="{Binding ControlsVisibility}">
             <ContentControl x:Name="OpenMediaPanel" IsEnabled="False" HorizontalContentAlignment="Stretch">
@@ -45,6 +53,8 @@
                 <TextBlock Text="{Binding InfoPanel.VideoSummary}" TextWrapping="WrapWholeWords" />
                 <TextBlock Text="{Binding InfoPanel.AudioSummary}" TextWrapping="WrapWholeWords" />
                 <TextBlock Text="{Binding InfoPanel.HdrSummary}" TextWrapping="WrapWholeWords" />
+                <TextBlock Text="{Binding InfoPanel.DecodeSummary}" TextWrapping="WrapWholeWords" />
+                <TextBlock Text="{Binding InfoPanel.OutputSummary}" TextWrapping="WrapWholeWords" />
                 <Button Content="关闭" Command="{Binding ToggleInfoPanelCommand}" />
             </StackPanel>
         </Border>

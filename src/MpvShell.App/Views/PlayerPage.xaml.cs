@@ -29,6 +29,10 @@ public sealed partial class PlayerPage : Page
     private bool _gestureBusy;
     private Task? _initializationTask;
     private Task? _shutdownTask;
+    private DisplayOutputMonitor? _displayOutputMonitor;
+    private bool _outputRefreshRequested;
+    private bool _outputRefreshRunning;
+    private Task _outputRefreshTask = Task.CompletedTask;
     private readonly D3D11VideoSurfaceRenderer _videoSurfaceRenderer = new();
     public PlayerViewModel ViewModel { get; }
 
@@ -48,6 +52,8 @@ public sealed partial class PlayerPage : Page
         Timeline.AddHandler(PointerReleasedEvent, new PointerEventHandler(OnTimelineReleased), true);
         Timeline.AddHandler(PointerCaptureLostEvent, new PointerEventHandler(OnTimelineReleased), true);
         _videoSurfaceRenderer.RenderingFailed += OnRenderingFailed;
+        _videoSurfaceRenderer.OutputStatusChanged += OnOutputStatusChanged;
+        ViewModel.InfoPanel.PropertyChanged += OnInfoPanelPropertyChanged;
     }
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
@@ -56,6 +62,12 @@ public sealed partial class PlayerPage : Page
         _initializeRequested = true;
         _initializationTask = InitializePlayerAsync();
         await _initializationTask;
+#if DEBUG
+        await Diagnostics.AppRecoveryProbe.RunIfRequestedAsync(ViewModel, _videoSurfaceRenderer,
+            ((App)Application.Current).Services.GetRequiredService<IMpvPlayerSession>(),
+            ShutdownAsync, ((App)Application.Current).MainWindowInstance!, _ready,
+            () => OpenMediaPanel.IsEnabled || TransportControls.IsEnabled);
+#endif
     }
 
     private async Task InitializePlayerAsync()
@@ -71,6 +83,12 @@ public sealed partial class PlayerPage : Page
             _ready = true;
             OpenMediaPanel.IsEnabled = TransportControls.IsEnabled = true;
             XamlRoot.Changed += OnXamlRootChanged;
+            var window = ((App)Application.Current).MainWindowInstance!;
+            _displayOutputMonitor = new DisplayOutputMonitor(WinRT.Interop.WindowNative.GetWindowHandle(window));
+            _displayOutputMonitor.Changed += OnDisplayOutputChanged;
+            window.AppWindow.Changed += OnAppWindowChanged;
+            QueueOutputRefresh();
+            await _outputRefreshTask;
             CreateTimers();
             SyncSliders();
             var mediaArgument = Environment.GetCommandLineArgs().Skip(1).FirstOrDefault(argument => !argument.StartsWith("--", StringComparison.Ordinal));
@@ -91,16 +109,81 @@ public sealed partial class PlayerPage : Page
         _volumeTimer?.Stop();
         if (_initializationTask is not null) await _initializationTask;
         if (XamlRoot is not null) XamlRoot.Changed -= OnXamlRootChanged;
+        if (((App)Application.Current).MainWindowInstance is { } window)
+            window.AppWindow.Changed -= OnAppWindowChanged;
+        ViewModel.InfoPanel.PropertyChanged -= OnInfoPanelPropertyChanged;
+        if (_displayOutputMonitor is not null)
+        {
+            _displayOutputMonitor.Changed -= OnDisplayOutputChanged;
+            _displayOutputMonitor.Dispose();
+            _displayOutputMonitor = null;
+        }
+        await _outputRefreshTask;
         ViewModel.PropertyChanged -= OnViewModelPropertyChanged;
         _videoSurfaceRenderer.RenderingFailed -= OnRenderingFailed;
+        _videoSurfaceRenderer.OutputStatusChanged -= OnOutputStatusChanged;
         try { await _videoSurfaceRenderer.DisposeAsync(); }
         finally { await ViewModel.DisposeAsync(); }
     }
 
-    private void OnRenderingFailed(string message) => DispatcherQueue.TryEnqueue(() => ViewModel.ReportError(message));
+    private void OnRenderingFailed(string message) => DispatcherQueue.TryEnqueue(() =>
+    {
+        if (_shutdownTask is not null) return;
+        _ready = false;
+        _autoHideTimer?.Stop();
+        _seekTimer?.Stop();
+        _volumeTimer?.Stop();
+        OpenMediaPanel.IsEnabled = TransportControls.IsEnabled = false;
+        ViewModel.ReportRenderingFailure(message);
+    });
+    private void OnOutputStatusChanged(string message) => DispatcherQueue.TryEnqueue(() => ViewModel.InfoPanel.SetOutputSummary(message));
+
+    private void OnDisplayOutputChanged(DisplayOutputCapabilities capabilities) => QueueOutputRefresh();
+
+    private void OnInfoPanelPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(InfoPanelViewModel.IsHdrSource)) QueueOutputRefresh();
+    }
+
+    private void OnAppWindowChanged(AppWindow sender, AppWindowChangedEventArgs args)
+    {
+        if (_ready && (args.DidPositionChange || args.DidSizeChange)) _displayOutputMonitor?.Refresh();
+    }
+
+    private void QueueOutputRefresh()
+    {
+        if (!_ready || _shutdownTask is not null) return;
+        _outputRefreshRequested = true;
+        if (_outputRefreshRunning) return;
+        _outputRefreshRunning = true;
+        _outputRefreshTask = RefreshOutputLoopAsync();
+    }
+
+    private async Task RefreshOutputLoopAsync()
+    {
+        try
+        {
+            while (_outputRefreshRequested && _ready && _shutdownTask is null)
+            {
+                _outputRefreshRequested = false;
+                try
+                {
+                    if (_displayOutputMonitor is not null)
+                        await _videoSurfaceRenderer.UpdateOutputAsync(ViewModel.InfoPanel.IsHdrSource,
+                            _displayOutputMonitor.Current, CancellationToken.None);
+                }
+                catch (Exception ex) { ViewModel.ReportError($"切换视频色彩输出失败：{ex.Message}"); }
+            }
+        }
+        finally { _outputRefreshRunning = false; }
+    }
 
     private async void OnVideoSurfaceSizeChanged(object sender, SizeChangedEventArgs e) => await ResizeVideoAsync();
-    private async void OnXamlRootChanged(XamlRoot sender, XamlRootChangedEventArgs args) => await ResizeVideoAsync();
+    private async void OnXamlRootChanged(XamlRoot sender, XamlRootChangedEventArgs args)
+    {
+        if (_ready) _displayOutputMonitor?.Refresh();
+        await ResizeVideoAsync();
+    }
 
     private async Task ResizeVideoAsync()
     {
@@ -205,7 +288,7 @@ public sealed partial class PlayerPage : Page
 
     private async void OnPlayerKeyDown(object sender, KeyRoutedEventArgs e)
     {
-        if (!_ready) return;
+        if (_shutdownTask is not null) return;
         var focusedControl = FocusManager.GetFocusedElement(XamlRoot);
         if (e.Key == VirtualKey.F11) { ToggleFullscreen(); e.Handled = true; }
         else if (e.Key == VirtualKey.Escape)
@@ -214,6 +297,7 @@ public sealed partial class PlayerPage : Page
             ViewModel.ShowControlsCommand.Execute(null);
             e.Handled = true;
         }
+        else if (!_ready) return;
         else if (focusedControl is TextBox) return;
         else if (e.Key == VirtualKey.Space && focusedControl is not Button)
         {

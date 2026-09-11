@@ -5,7 +5,9 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="MpvShell.App" Condition="'$(Configuration)' == 'Debug'" />
     <InternalsVisibleTo Include="MpvShell.Player.LibMpv.Tests" />
+    <InternalsVisibleTo Include="MpvShell.Rendering.WinUI.Tests" />
   </ItemGroup>
 
   <ItemGroup>

@@ -30,7 +30,7 @@ mpv 同 commit 头文件哈希：
 
 | 文件 | 逻辑库名 | 版本 | 架构 | 来源（URL/自建脚本） | 构建参数摘要 | 许可证 | 依赖闭包 | SHA-256 | 登记日期 |
 |---|---|---|---|---|---|---|---|---|---|
-| `libmpv-2.dll` | `mpv` | v0.41.0 / `41f6a645…` | x64 | `build/native/build-mpv.ps1` | Clang/LLD 23、Release、`/MT`、LGPL-only、静态第三方库 | LGPL-2.1-or-later；静态组件见下表 | 仅 Windows 系统 DLL；无 VC Runtime/第三方 DLL | `D0D01C2AF708423E6B281ADC58A39FAFD1FB2CFA8FE76D437D76383F088BA228` | 2026-08-30 |
+| `libmpv-2.dll` | `mpv` | v0.41.0 / `41f6a645…` | x64 | `build/native/build-mpv.ps1` | Clang/LLD 23、Release、`/MT`、LGPL-only、静态 dav1d/FFmpeg SIMD、D3D11 EGL 互操作 | LGPL-2.1-or-later；静态组件见下表 | Windows 系统 DLL；通过宿主已加载的 ANGLE 模块提供硬解互操作 | `932D70710EECAA1D686D1E49674AE9A13C555E6C4701695858B5163A8C5DFAAB` | 2026-09-11 |
 | `d3dcompiler_47.dll` | — | Windows SDK 10.0.26100.0 | x64 | ANGLE GN 构建输出 | ANGLE D3D11-only | Microsoft Windows SDK 可再分发组件 | `KERNEL32`、`ADVAPI32`、`RPCRT4` | `E407B9FFADEF47E87994DC488214F75405CF04EE99589F2315FC7AB99FD1DFE2` | 2026-08-30 |
 | `libGLESv2.dll` | `GLESv2` | `chromium/7977` / `736ed80c…` | x64 | `build/native/build-angle.ps1` | MSVC Release、D3D11-only | BSD-3-Clause | Windows 系统 DLL | `55ECF05D47B4CCFCF91B4F5FE0F21ED3FCE2584B6CC54E4F6855A65142F32D3C` | 2026-08-30 |
 | `libEGL.dll` | `EGL` | `chromium/7977` / `736ed80c…` | x64 | 同上 | 同上 | BSD-3-Clause | `KERNEL32`；运行时使用同组 GLES/D3DCompiler | `8B912D254D5FC8755840B6FD1E404F36E466521FD63F68255528CD7F101909D7` | 2026-08-30 |
@@ -40,6 +40,7 @@ mpv 同 commit 头文件哈希：
 | 组件 | 锁定版本/commit | 许可证 | 作用 |
 |---|---|---|---|
 | FFmpeg | 8.0.3 / `74d461d3ed8a9fdd956336fd2a6a77ebc1bb91a9` | LGPL-2.1-or-later（GPL/nonfree 均关闭） | 解封装、编解码、滤镜、D3D 硬解 |
+| dav1d | 1.5.4 / `54706fc6bc0cdecab7e9593974a4039cc038fca7` | BSD-2-Clause | 不支持 AV1 硬解时的 8/10/12 bit 软件解码；静态链接并启用 x64 SIMD |
 | libplacebo | 7.351.0 / `3188549fba13bbdf3a5a98de2a38c2e71f04e21e` | LGPL-2.1-or-later | GPU 色彩与着色器路径 |
 | libass | 0.17.4 / `bbb3c7f1570a4a021e52683f3fbdf74fe492ae84` | ISC | ASS 字幕 |
 | FreeType | 2.14.3 / 源码哈希见 `source-lock.json` | FTL OR GPL-2.0-or-later（采用 FTL） | 字体栅格化 |
@@ -48,7 +49,7 @@ mpv 同 commit 头文件哈希：
 | zlib | 1.3.2 / 源码哈希见 `source-lock.json` | Zlib | 压缩支持 |
 | Vulkan-Headers | `cacef3039d277c448c89336290ec3937270b0996` | Apache-2.0 | libplacebo 编译期头文件；Vulkan 运行时后端关闭 |
 
-除明确标注为编译期头文件的 Vulkan-Headers 外，上表组件均静态并入 `libmpv-2.dll`，不会在运行时形成额外 DLL。Meson 还解析了 libpng 1.6.55 的 fallback，但最终 `mpv-2.dll` 链接规则不包含 libpng；其来源哈希仍保留在锁文件中。完整 Meson 参数、工具链版本、源码哈希和三个上游兼容补丁均保存在 `build/native/`。
+除明确标注为编译期头文件的 Vulkan-Headers 外，上表组件均静态并入 `libmpv-2.dll`，不会在运行时形成额外 DLL。Meson 还解析了 libpng 1.6.55 的 fallback，但最终 `mpv-2.dll` 链接规则不包含 libpng；其来源哈希仍保留在锁文件中。完整 Meson 参数、工具链版本、源码哈希和五个补丁均保存在 `build/native/`。D3D11 EGL 互操作使用同一锁定 ANGLE commit 的 EGL 头文件；补丁仅允许复用宿主先校验并加载的 `libEGL.dll`，不执行 DLL 路径搜索，并修正 `EGL_EXT_device_query` 的 client 扩展查询。NASM 2.16.03 的归档与可执行文件哈希同样锁定，供 FFmpeg/dav1d 的 SIMD 编译使用。
 
 ## 5. 直接导入闭包结论
 
@@ -61,3 +62,4 @@ mpv 同 commit 头文件哈希：
 | 2026-08-28 | P0-00 | 建立清单格式与登记规则（空表，无二进制落盘） | b2f4ccf |
 | 2026-08-29 | P0-02 | 锁定 mpv/ANGLE 源码、API/DEPS 哈希和构建入口；实际二进制仍未落盘 | （待提交） |
 | 2026-08-30 | P0-02 | 完成真实 mpv/ANGLE 构建、四文件运行时闭包、许可证与 PE 导入审计、哈希回填和输出目录烟雾测试 | （待提交） |
+| 2026-09-11 | P0-10 | 同一 mpv commit 重编启用 `egl-angle`，加入已加载 ANGLE 复用和 client 扩展兼容补丁；新增固定 dav1d 1.5.4 与 NASM 2.16.03，支持 AV1 软件回退和 D3D11 NV12/P010 纹理互操作 | （待提交） |

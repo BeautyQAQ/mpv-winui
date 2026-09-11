@@ -1,8 +1,8 @@
 # Phase 0 实施进度
 
-> 总体状态：进行中（SDR 播放 MVP 已完成，Debug/Release 各 95/95 测试与自包含发布包 GUI 验证通过；完整 Phase 0 闸口尚未验收）
-> 当前阶段：已交付本地/HTTP SDR MVP；HDR 与 4K 硬解按用户安排暂缓，后续继续完整 Phase 0 验收
-> 最后更新：2026-09-10
+> 总体状态：进行中（SDR MVP 已完成；HDR/4K 本轮 Debug/Release 各 138/138 测试通过，屏幕与完整 Phase 0 闸口尚未验收）
+> 当前阶段：P0-10 HDR/4K 硬解实施与自动化验证；用户安排晚间进行显示器与交互验收
+> 最后更新：2026-09-11
 > 架构基线：`docs/architecture.md` v1.1  
 > 执行计划：`docs/implementation/phase-0-plan.md`
 
@@ -23,7 +23,7 @@
 
 ## 2. 初始基线与当前回归
 
-当前回归日期：2026-09-10。SDK 为 .NET 10.0.401，Windows x64；Debug、Release 全量构建均通过且无警告/错误，两种配置各通过 95 个测试：App 34、LibMpv 30、Rendering 23、Abstractions 2、Sidecar 5、VideoHost 1。原生依赖已固定并接入，真实控制、SDR 渲染与主要 GUI 操作已有证据。SDR MVP 自包含发布包位于 `artifacts/mvp/win-x64/MpvShell.App.exe`，原生校验与最终目录 GUI 播放均通过；发布命令为 PowerShell 7 下的 `.\build\testing\publish-mvp.ps1`。
+当前回归日期：2026-09-11。SDK 为 .NET 10.0.401，Windows x64；Debug、Release 全量构建均通过且无警告/错误，两种配置各通过 138 个测试，无跳过：App 36、LibMpv 43、Rendering 51、Abstractions 2、Sidecar 5、VideoHost 1。已实际验证 4K HEVC Main10 的 D3D11VA / EGL / P010 GPU 帧传递、AV1 软件回退和 HDR 梯度像素。完整结果与晚间显示器验收见 [HDR/4K 记录](hdr-4k-progress.md)。原 2026-09-10 SDR MVP 发布与 GUI 记录保留在 `artifacts/mvp/`；本轮使用独立的 `artifacts/hdr-4k/`。
 
 以下为 2026-08-28 初始审计快照（P0-00 当日复核），保留历史状态，不代表当前实现：
 
@@ -75,7 +75,7 @@ dotnet build mpv-winui.slnx -p:Platform=x64 --no-restore
 | P0-07 ANGLE/EGL 与 OpenGL FBO | 进行中 | Codex | 2026-09-10 |  |  | D3D11 纹理直接导入 EGL pbuffer；真实 GPU 色块、resize 和上下文重建通过 |
 | P0-08 Render API SDR 集成 | 进行中 | Codex | 2026-09-10 |  |  | Gate B：用户视频正向进入 SwapChainPanel；软件解码 SDR、暂停和 seek 已实测，完整性能/色彩与窗口矩阵待验收 |
 | P0-09 覆盖层、输入与生命周期 | 进行中 | Codex | 2026-09-10 |  |  | Gate C：文件选择、暂停、时间轴、轨道/信息覆盖层已实测；UI 派发和关闭竞争测试通过，完整输入/显示器矩阵待验收 |
-| P0-10 4K、硬解和 HDR 验证 | 未开始 |  |  |  |  | Gate D，按用户 2026-09-10 指令暂缓；不影响当前 SDR MVP 推进 |
+| P0-10 4K、硬解和 HDR 验证 | 待人工验证 | Codex | 2026-09-11 |  |  | 实际 HEVC 4K 硬解、AV1 回退、PQ 输出像素与 Debug/Release 回归通过；详见 `hdr-4k-progress.md`，真实屏幕与长时间性能矩阵待晚间验收 |
 | P0-11 切换、清理与 Phase 0 验收 | 未开始 |  |  |  |  | 仅 Gate A～D 全部通过后开始 |
 
 ## 4. 闸口状态
@@ -85,7 +85,7 @@ dotnet build mpv-winui.slnx -p:Platform=x64 --no-restore
 | Gate A：libmpv 控制 | 进行中 | LibMpv 30 测试含真实会话、本地/HTTP 控制、EOF、取消和错误恢复 | 原生文件选择后真实播放、暂停与时间轴 seek | 控制路径已有证据；待正式闸口证据审计，HLS 未单独实测 |
 | Gate B：SDR Render API | 进行中 | Rendering 23 测试含真实 GPU 色块方向、resize、同一 core 重建上下文 | result.mp4 正向显示，暂停画面稳定 | SDR 路线已打通；完整窗口/性能/色彩对比验收未完成 |
 | Gate C：XAML 覆盖与输入 | 进行中 | App 34 测试含 UI 事件派发、浮层保留、seek 竞争与关闭协调 | 原生文件选择、时间轴、媒体信息/轨道、音量/静音、F11/Esc 及正常关闭均已验证 | 完整触屏、DPI/显示器矩阵未完成 |
-| Gate D：4K、硬件解码与 HDR | 未开始 | 无 | 无 | 按用户安排暂缓，当前默认软件解码 |
+| Gate D：4K、硬件解码与 HDR | 待人工验证 | Debug/Release 各 138/138；真实 HEVC 4K10 硬解、AV1 软件回退、10-bit/FP16 精度及 PQ 梯度通过 | 当前 Windows HDR 关闭；HDR 开启、视觉效果与跨屏待晚间测试 | 自动化已完成当前范围；长时间性能、显示器矩阵和 AV1 硬解设备覆盖仍未验收 |
 
 ## 5. 外部输入与阻塞项
 
@@ -96,12 +96,12 @@ dotnet build mpv-winui.slnx -p:Platform=x64 --no-restore
 | EXT-03 | ANGLE x64 固定版本、来源、构建参数和许可证 | 已完成 | P0-02/P0-07 | Agent | 固定 Chrome 152 `chromium/7977`；真实构建三 DLL 闭包并登记哈希；EGL 1.5、OpenGL ES 3.0 与 NVIDIA D3D11 后端烟雾测试通过 |
 | EXT-04 | 可再生成或许可证清晰的 SDR 测试媒体 | 已完成当前测试准备 | P0-05 前 | Agent（生成） | 测试代码生成 WAV/Y4M 合成媒体；用户授权本机 result.mp4 用于 GUI 验证，哈希见 MVP 记录；视频及截图不纳入 Git |
 | EXT-05 | 本地 HTTP/HLS 测试服务和固定媒体 | HTTP 已完成；HLS 待验证 | P0-05 前 | Agent（实现） | Python 标准库服务仅监听 127.0.0.1 并支持 Range；原生测试使用 .NET 本机 HTTP 服务，已验证控制和 404 恢复；HLS 尚未单独实测 |
-| EXT-06 | 4K HEVC Main10、AV1、HDR10 和 10-bit 渐变素材 | 按用户安排暂缓 | P0-10 前 | 用户 | 2026-09-10 明确先完成播放，后续恢复 HDR/硬解验收时确认素材与硬件 |
-| EXT-07 | HDR 显示器、GPU、驱动和 Windows 测试环境 | 部分确认；HDR 验证暂缓 | P0-10 前 | 用户 | 开发机已确认：Windows 11 10.0.26200、GTX 1060 5GB、驱动 32.0.15.8180；HDR 显示器尚未确认，按用户指令暂不作为 SDR MVP 阻塞 |
+| EXT-06 | 4K HEVC Main10、AV1、HDR10 和 10-bit 渐变素材 | 已完成 | P0-10 前 | Codex | 已生成三份固定 4K10-bit 样本并通过哈希、元数据、完整 CPU 解码及无损梯度像素核验，详见 HDR/4K 记录 |
+| EXT-07 | HDR 显示器、GPU、驱动和 Windows 测试环境 | 开发机已确认；HDR 开启与屏幕验收待进行 | P0-10 | 用户 / Codex | Windows 11 10.0.26200、GTX 1060 5GB、驱动 32.0.15.8180；应用已查询当前窗口显示器，Windows HDR 未开启，真实 HDR 效果待用户晚间测试 |
 
 说明：EXT-01、EXT-02、EXT-03、EXT-04、EXT-05 已有明确来源或实现策略；P0-02 的四个 DLL 全部来自仓库锁定的构建流程，没有来源不明的运行时资产。
 
-Gate A～C 已进入实现和验证阶段，但尚未完成逐项正式验收；Gate D 按用户安排暂缓。当前不宣布完整 Phase 0 通过。
+Gate A～C 已进入实现和验证阶段，但尚未完成逐项正式验收；Gate D 于 2026-09-11 恢复。当前不宣布完整 Phase 0 通过。
 
 ## 6. 验证记录
 
@@ -143,6 +143,8 @@ Gate A～C 已进入实现和验证阶段，但尚未完成逐项正式验收；
 | 2026-09-10 | P0-05/P0-09 | 本机 HTTP 服务，GUI | sample.mp4 播放到 EOF，missing.mp4 返回404，从最近列表重新打开 sample.mp4 | 通过：显示红色错误后可恢复视频并清除错误，最近列表只含两条成功项 | `artifacts/mvp/evidence/http-playback.jpg`、`http-error.jpg` | 截图只保留本机；HLS 未单独实测 |
 | 2026-09-10 | P0-08/P0-09 | Windows x64，GUI | F11→Esc、音量/静音、Alt+F4 | 通过：1104×721→1368×912→1104×721；按钮/滑块响应；关闭后进程消失，按 render context→EGL/SwapChain/D3D11→core 释放 | `docs/implementation/mvp-progress.md`；本机会话日志 | 累计呈现7200帧；不等同于完整 DPI/多显示器验收 |
 | 2026-09-10 | SDR MVP 发布 | Release win-x64，.NET/WinUI 自包含 | `build/testing/publish-mvp.ps1`，从最终目录运行应用并播放 result.mp4 | 通过：四 DLL 哈希/x64/加载/API2.5、三次会话创建销毁；GUI 正向播放到23秒并暂停 | `artifacts/mvp/win-x64/publish-verification.json`、`artifacts/mvp/evidence/release-playback.jpg` | MVP 已完成；不代表 P0-11 清理或 Gate D 已验收 |
+| 2026-09-11 | P0-10 实施与回归 | .NET SDK 10.0.401，Windows x64，GTX 1060 5GB | Debug/Release 全量 build/test，显式提供三份固定 4K 素材 | 两种配置均 0 警告/错误，各 138/138，无跳过 | `artifacts/hdr-4k/evidence/`、`test-results/`、`hardware-reports/`；详情见 `hdr-4k-progress.md` | HEVC Main10 GPU 纹理硬解、AV1 软件回退、10-bit/FP16 精度及 PQ 梯度通过，屏幕验收待进行 |
+| 2026-09-11 | P0-10 测试包 | Release win-x64，.NET/WinUI 自包含 | `publish-mvp.ps1 -OutputDirectory artifacts/hdr-4k/win-x64 -NoRestore` | 四 DLL 哈希/x64/加载/API2.5、3 次会话与 35 份许可证原文哈希通过 | `artifacts/hdr-4k/win-x64/publish-verification.json` | 独立目录保留旧 SDR MVP；尚不代表完整 Gate D 通过 |
 
 ## 7. 技术决策记录
 
@@ -150,8 +152,8 @@ Gate A～C 已进入实现和验证阶段，但尚未完成逐项正式验收；
 
 | 编号 | 日期 | 决策 | 状态 | 依据 | 影响 |
 |---|---|---|---|---|---|
-| DEC-01 |  | HDR 使用 PQ 10-bit 或 scRGB 16-bit float | 待实测 | P0-10 | SwapChain 格式、ColorSpace、FBO 精度 |
-| DEC-02 |  | 默认硬件解码配置 | 待实测 | P0-10 | 性能、兼容性和 GPU 资源路径 |
+| DEC-01 | 2026-09-11 | HDR 使用 PQ 10-bit / BT.2020 | 已实施；屏幕验收待完成 | P0-10：真实 R10/FP16 存储与 PQ 像素测试，详见 HDR/4K 记录 | 使用 RGB10A2 SwapChain、PQ ColorSpace 与 Render API DEPTH=10；scRGB 的 80 nit 参考白与扩展色域转换未实现 |
+| DEC-02 | 2026-09-11 | 优先 D3D11VA + d3d11-egl，失败时软件回退 | 已实施；当前设备实测通过 | GTX 1060 HEVC Main10 硬解与 AV1 软件回退，结果写入解码诊断 | GPU 帧直接传递，禁用 copy-back 路线；其他 GPU 与 AV1 硬解设备待覆盖 |
 | DEC-03 |  | 是否增加极薄 C++/WinRT 图形桥接 | 待实测 | P0-06/P0-07 | 项目结构和原生资源所有权；P0-06 已用纯 C# + Vortice 表达 COM/资源所有权，暂不引入 C++ 桥接 |
 | DEC-04 |  | 最低 Windows/驱动支持范围 | 待实测 | P0-09/P0-10 | 发布要求和已知限制 |
 | DEC-P06-01 | 2026-08-28 | 使用 Vortice.Direct3D11 3.8.3 作为 D3D11/DXGI COM 互操作层 | 已实施 | P0-06 | 成熟的社区库，兼容 .NET 10，免手动 vtable 声明 |

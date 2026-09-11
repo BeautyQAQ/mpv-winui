@@ -3,6 +3,9 @@
 ###############################################################################
 * text=auto
 
+# Preserve upstream license bytes for license-origins.json SHA-256 verification.
+src/MpvShell.App/Assets/ThirdParty/** -text -whitespace
+
 ###############################################################################
 # Set default behavior for command prompt diff.
 #

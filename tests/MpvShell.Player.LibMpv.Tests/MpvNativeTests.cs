@@ -82,7 +82,7 @@ public sealed class MpvNativeTests
         mapped[2].Selected.Should().BeTrue();
         var info = LibMpvBackend.BuildInfo(new Dictionary<string, object?>
         {
-            ["video-params"] = new Dictionary<string, object?> { ["w"] = 1280L, ["h"] = 720L, ["gamma"] = "bt.1886", ["plane-depth"] = 8L },
+            ["video-params"] = new Dictionary<string, object?> { ["w"] = 1280L, ["h"] = 720L, ["gamma"] = "bt.1886", ["pixelformat"] = "yuv420p" },
             ["video-codec"] = "h264", ["audio-codec-name"] = "aac", ["container-fps"] = 29.97,
         });
         info.Resolution.Should().Be("1280 × 720");

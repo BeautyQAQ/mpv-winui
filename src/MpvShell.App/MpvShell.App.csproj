@@ -28,6 +28,15 @@
           TargetPath="runtimes\win-x64\native\%(Filename)%(Extension)" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Remove="Assets\ThirdParty\**\*" />
+    <Content Remove="Assets\ThirdParty\**\*" />
+    <Content Include="Assets\ThirdParty\**\*"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest"
+             TargetPath="ThirdParty\%(RecursiveDir)%(Filename)%(Extension)" />
+  </ItemGroup>
+
   <!-- 未打包 WinUI 的应用 PRI 由 MRT Core 生成，但不会自动进入 .NET 发布清单。
        App/MainWindow/PlayerPage 的 XBF 已作为 EmbeddedData 包含在此 PRI 中。 -->
   <Target Name="IncludeAppPriInPublish"

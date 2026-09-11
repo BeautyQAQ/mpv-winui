@@ -7,6 +7,24 @@ namespace MpvShell.Player.LibMpv.Tests;
 public sealed class MpvPlayerSessionTests
 {
     [Fact]
+    public async Task Native_session_should_configure_direct_hardware_policy_and_switch_color_targets()
+    {
+        await using var session = new MpvPlayerSession(new Dictionary<string, string> { ["ao"] = "null" });
+        await session.InitializeAsync(CancellationToken.None);
+        (await session.GetPropertyAsync("options/hwdec", CancellationToken.None)).Should().BeEquivalentTo(new[] { "d3d11va" });
+        (await session.GetPropertyAsync("options/gpu-hwdec-interop", CancellationToken.None)).Should().Be("d3d11-egl");
+        Convert.ToDouble(await session.GetPropertyAsync("options/hr-seek-demuxer-offset", CancellationToken.None)).Should().Be(1);
+        await session.ConfigureVideoOutputAsync(MpvVideoOutputMode.Hdr10, 1500, CancellationToken.None);
+        (await session.GetPropertyAsync("options/target-trc", CancellationToken.None)).Should().Be("pq");
+        (await session.GetPropertyAsync("options/target-prim", CancellationToken.None)).Should().Be("bt.2020");
+        Convert.ToDouble(await session.GetPropertyAsync("options/target-peak", CancellationToken.None)).Should().Be(1500);
+        await session.ConfigureVideoOutputAsync(MpvVideoOutputMode.Sdr, 1000, CancellationToken.None);
+        (await session.GetPropertyAsync("options/target-trc", CancellationToken.None)).Should().Be("srgb");
+        (await session.GetPropertyAsync("options/target-prim", CancellationToken.None)).Should().Be("bt.709");
+        Convert.ToDouble(await session.GetPropertyAsync("options/target-peak", CancellationToken.None)).Should().Be(203);
+    }
+
+    [Fact]
     public async Task Native_empty_session_should_reject_play_without_claiming_playback()
     {
         await using var session = new MpvPlayerSession(new Dictionary<string, string> { ["ao"] = "null" });

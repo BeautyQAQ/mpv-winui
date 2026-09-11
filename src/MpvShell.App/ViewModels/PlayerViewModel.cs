@@ -53,6 +53,19 @@ public partial class PlayerViewModel : ObservableObject, IAsyncDisposable
 
     public void RevealControls() => State = State with { AreControlsVisible = true };
 
+    public bool HasRenderingFailure => _renderingErrorMessage is not null;
+
+    public void ReportRenderingFailure(string message)
+    {
+        // 渲染器要求重启后，音量等成功命令不能清掉终态提示。
+        _renderingErrorMessage = message;
+        IsBuffering = false;
+        State = State with { IsPlaying = false, AreControlsVisible = true };
+        OnPropertyChanged(nameof(HasRenderingFailure));
+        OnPropertyChanged(nameof(ErrorMessage));
+        OnPropertyChanged(nameof(ErrorVisibility));
+    }
+
     public PlayerViewModel(IPlayerBackend backend, PlaybackInteractionCoordinator coordinator)
         : this(backend, coordinator, new GestureDecisionEngine(), new RecentUrlStore(), new InfoPanelViewModel())
     {
@@ -126,10 +139,11 @@ public partial class PlayerViewModel : ObservableObject, IAsyncDisposable
     }
 
     private string? _errorMessage;
+    private string? _renderingErrorMessage;
 
     public string? ErrorMessage
     {
-        get => _errorMessage;
+        get => _renderingErrorMessage ?? _errorMessage;
         private set
         {
             if (!SetProperty(ref _errorMessage, value))
@@ -143,6 +157,21 @@ public partial class PlayerViewModel : ObservableObject, IAsyncDisposable
 
     public Visibility ErrorVisibility =>
         string.IsNullOrWhiteSpace(ErrorMessage) ? Visibility.Collapsed : Visibility.Visible;
+
+    private bool _isBuffering;
+
+    public bool IsBuffering
+    {
+        get => _isBuffering;
+        private set
+        {
+            if (!SetProperty(ref _isBuffering, value)) return;
+            OnPropertyChanged(nameof(BufferingVisibility));
+        }
+    }
+
+    public Visibility BufferingVisibility =>
+        IsBuffering ? Visibility.Visible : Visibility.Collapsed;
 
     public async Task InitializeAsync()
     {
@@ -198,10 +227,12 @@ public partial class PlayerViewModel : ObservableObject, IAsyncDisposable
 
     public async Task SeekToAsync(double seconds)
     {
+        if (HasRenderingFailure) return;
         try
         {
             var clampedSeconds = ClampPosition(seconds);
             await _backend.SetPositionAsync(clampedSeconds, CancellationToken.None);
+            if (HasRenderingFailure) return;
             State = _coordinator.ShowControls(State with { PositionSeconds = clampedSeconds });
             ErrorMessage = null;
         }
@@ -214,6 +245,7 @@ public partial class PlayerViewModel : ObservableObject, IAsyncDisposable
     [RelayCommand]
     private async Task OpenUrlAsync()
     {
+        if (HasRenderingFailure) return;
         if (string.IsNullOrWhiteSpace(UrlText))
         {
             return;
@@ -222,10 +254,12 @@ public partial class PlayerViewModel : ObservableObject, IAsyncDisposable
         try
         {
             await LoadUrlAsync(UrlText.Trim());
+            if (HasRenderingFailure) return;
             ErrorMessage = null;
         }
         catch (Exception ex)
         {
+            IsBuffering = false;
             ErrorMessage = ex.Message;
         }
     }
@@ -288,6 +322,7 @@ public partial class PlayerViewModel : ObservableObject, IAsyncDisposable
     [RelayCommand]
     private async Task TogglePlayPauseAsync()
     {
+        if (HasRenderingFailure) return;
         if (string.IsNullOrWhiteSpace(State.CurrentUrl))
         {
             ReportError("请先打开媒体。");
@@ -298,12 +333,15 @@ public partial class PlayerViewModel : ObservableObject, IAsyncDisposable
             if (State.IsPlaying)
             {
                 await _backend.PauseAsync(CancellationToken.None);
+                if (HasRenderingFailure) return;
                 State = _coordinator.ShowControls(State with { IsPlaying = false });
                 ErrorMessage = null;
                 return;
             }
 
             await _backend.PlayAsync(CancellationToken.None);
+            // 等待后端命令时可能发生不可恢复的渲染故障，不能用迟到的回复覆盖终态。
+            if (HasRenderingFailure) return;
             State = _coordinator.ShowControls(State with { IsPlaying = true });
             ErrorMessage = null;
         }
@@ -322,7 +360,7 @@ public partial class PlayerViewModel : ObservableObject, IAsyncDisposable
     [RelayCommand]
     private async Task SelectTrackAsync(TrackInfo? track)
     {
-        if (track is null)
+        if (HasRenderingFailure || track is null)
         {
             return;
         }
@@ -338,6 +376,7 @@ public partial class PlayerViewModel : ObservableObject, IAsyncDisposable
                 await _backend.SetSubtitleTrackAsync(track.Id, CancellationToken.None);
             }
 
+            if (HasRenderingFailure) return;
             ReplaceTrackSelection(track);
             State = _coordinator.ShowControls(State);
             ErrorMessage = null;
@@ -350,11 +389,13 @@ public partial class PlayerViewModel : ObservableObject, IAsyncDisposable
 
     private async Task SeekRelativeAsync(double deltaSeconds)
     {
+        if (HasRenderingFailure) return;
         try
         {
             // 原生 time-pos 事件可能在请求回复之前到达，目标必须根据发出请求时的状态计算。
             var nextPosition = ClampPosition(State.PositionSeconds + deltaSeconds);
             await _backend.SeekAsync(deltaSeconds, CancellationToken.None);
+            if (HasRenderingFailure) return;
             State = _coordinator.ShowControls(State with { PositionSeconds = nextPosition });
             ErrorMessage = null;
         }
@@ -366,13 +407,21 @@ public partial class PlayerViewModel : ObservableObject, IAsyncDisposable
 
     private async Task LoadUrlAsync(string url)
     {
+        // 切换媒体时清除旧文件的缓冲状态；新文件的状态仍由后端事件决定。
+        IsBuffering = false;
         await _backend.LoadUrlAsync(url, CancellationToken.None);
+        if (HasRenderingFailure) return;
+
+        var info = await _backend.GetInfoSnapshotAsync(CancellationToken.None);
+        if (HasRenderingFailure) return;
+        var tracks = await _backend.GetTracksAsync(CancellationToken.None);
+        if (HasRenderingFailure) return;
 
         _recentUrlStore.Add(url);
         RefreshRecentUrls();
 
-        InfoPanel.Update(await _backend.GetInfoSnapshotAsync(CancellationToken.None));
-        ReplaceTracks(await _backend.GetTracksAsync(CancellationToken.None));
+        InfoPanel.Update(info);
+        ReplaceTracks(tracks);
 
         UrlText = url;
         State = _coordinator.ShowControls(State with { CurrentUrl = url });
@@ -440,6 +489,7 @@ public partial class PlayerViewModel : ObservableObject, IAsyncDisposable
                     case PlaybackStateChanged stateChanged:
                         State = stateChanged.State with
                         {
+                            IsPlaying = !HasRenderingFailure && stateChanged.State.IsPlaying,
                             AreControlsVisible = State.AreControlsVisible || !stateChanged.State.IsPlaying,
                             CurrentOverlay = State.CurrentOverlay,
                         };
@@ -450,10 +500,15 @@ public partial class PlayerViewModel : ObservableObject, IAsyncDisposable
                     case MediaInfoChanged infoChanged:
                         InfoPanel.Update(infoChanged.Snapshot);
                         break;
+                    case BufferingChanged bufferingChanged:
+                        IsBuffering = !HasRenderingFailure && bufferingChanged.IsBuffering;
+                        break;
                     case EndReached:
+                        IsBuffering = false;
                         State = State with { IsPlaying = false, AreControlsVisible = true };
                         break;
                     case BackendFaulted faulted:
+                        IsBuffering = false;
                         ReportError(faulted.Message);
                         break;
                     }
@@ -465,7 +520,12 @@ public partial class PlayerViewModel : ObservableObject, IAsyncDisposable
         }
         catch (Exception ex)
         {
-            _dispatchToUi(() => { if (!_disposed) ReportError(ex.Message); });
+            _dispatchToUi(() =>
+            {
+                if (_disposed || cancellationToken.IsCancellationRequested) return;
+                IsBuffering = false;
+                ReportError(ex.Message);
+            });
         }
     }
 

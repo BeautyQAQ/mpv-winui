@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using MpvShell.Player.LibMpv.Native;
@@ -7,7 +8,7 @@ using MpvShell.Player.LibMpv.Native;
 namespace MpvShell.Player.LibMpv;
 
 /// <summary>一份 mpv core 的明确所有权对象；普通 Client API 只在事件/命令线程执行。</summary>
-public sealed class MpvPlayerSession : IMpvPlayerSession
+public sealed partial class MpvPlayerSession : IMpvPlayerSession
 {
     private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(15);
     private static readonly string[] ObservedProperties =
@@ -15,9 +16,11 @@ public sealed class MpvPlayerSession : IMpvPlayerSession
         "pause", "time-pos", "duration", "volume", "mute", "idle-active", "eof-reached",
         "paused-for-cache", "track-list", "video-params", "video-codec", "audio-codec-name",
         "estimated-vf-fps", "container-fps", "cache-buffering-state", "hwdec-current",
+        "hwdec-interop", "decoder-frame-drop-count", "frame-drop-count",
     ];
 
     private readonly object _lifecycle = new();
+    private readonly SemaphoreSlim _videoOutputGate = new(1, 1);
     private readonly AutoResetEvent _eventSignal = new(false);
     private readonly ConcurrentQueue<Action<nint>> _commands = new();
     private readonly ConcurrentDictionary<ulong, TaskCompletionSource<object?>> _pending = new();
@@ -25,6 +28,7 @@ public sealed class MpvPlayerSession : IMpvPlayerSession
     private readonly TaskCompletionSource _stopped = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly MpvWakeupCallback _wakeupCallback;
     private readonly IReadOnlyDictionary<string, string>? _testOptions;
+    private readonly string _logLevel;
     private TaskCompletionSource? _renderReleased;
     private Task? _disposeTask;
     private nint _handle;
@@ -38,9 +42,10 @@ public sealed class MpvPlayerSession : IMpvPlayerSession
 
     public MpvPlayerSession() : this(null) { }
 
-    internal MpvPlayerSession(IReadOnlyDictionary<string, string>? testOptions)
+    internal MpvPlayerSession(IReadOnlyDictionary<string, string>? testOptions, string logLevel = "error")
     {
         _testOptions = testOptions;
+        _logLevel = logLevel;
         _wakeupCallback = _ =>
         {
             // 回调不解析事件、不调用 Client API，不允许托管异常越过 C ABI。
@@ -107,6 +112,9 @@ public sealed class MpvPlayerSession : IMpvPlayerSession
     }
 
     internal Task<object?> CommandAsync(string[] arguments, CancellationToken cancellationToken) =>
+        MutatePlaybackAsync(() => CommandCoreAsync(arguments, cancellationToken), cancellationToken);
+
+    private Task<object?> CommandCoreAsync(string[] arguments, CancellationToken cancellationToken) =>
         RequestAsync((handle, id) =>
         {
             using var utf8 = new Utf8Arguments(arguments);
@@ -117,7 +125,34 @@ public sealed class MpvPlayerSession : IMpvPlayerSession
         RequestAsync((handle, id) => MpvNative.GetPropertyAsync(handle, id, name, MpvFormat.Node), cancellationToken);
 
     internal Task<object?> SetPropertyAsync(string name, object value, CancellationToken cancellationToken) =>
+        MutatePlaybackAsync(() => SetPropertyCoreAsync(name, value, cancellationToken), cancellationToken,
+            allowAfterRenderingFailure: name is "volume" or "mute" || name == "pause" && value is true);
+
+    private Task<object?> SetPropertyCoreAsync(string name, object value, CancellationToken cancellationToken) =>
         RequestAsync((handle, id) => SetProperty(handle, id, name, value), cancellationToken);
+
+    /// <summary>调用方先暂停呈现，再异步设置色彩目标；全部普通 C API 仍由事件/命令线程执行。</summary>
+    public async ValueTask ConfigureVideoOutputAsync(MpvVideoOutputMode mode, double peakLuminance, CancellationToken cancellationToken)
+    {
+        if (!Enum.IsDefined(mode)) throw new ArgumentOutOfRangeException(nameof(mode));
+        if (!double.IsFinite(peakLuminance) || peakLuminance <= 0)
+            throw new ArgumentOutOfRangeException(nameof(peakLuminance), "目标峰值亮度必须为有限正数。");
+        await _videoOutputGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var hdr = mode == MpvVideoOutputMode.Hdr10;
+            // 图形恢复期间持有播放修改锁；色彩配置由渲染器生命周期锁与本方法的锁串行化。
+            await SetPropertyCoreAsync("options/target-prim", hdr ? "bt.2020" : "bt.709", cancellationToken).ConfigureAwait(false);
+            await SetPropertyCoreAsync("options/target-trc", hdr ? "pq" : "srgb", cancellationToken).ConfigureAwait(false);
+            // 上游 target-peak 是带 auto 枚举项的整数选项，不接受 MPV_FORMAT_DOUBLE。
+            var peak = hdr ? (int)Math.Round(Math.Clamp(peakLuminance, 203, 10000)) : 203;
+            await SetPropertyCoreAsync("options/target-peak", peak.ToString(CultureInfo.InvariantCulture), cancellationToken).ConfigureAwait(false);
+            await SetPropertyCoreAsync("options/tone-mapping", "mobius", cancellationToken).ConfigureAwait(false);
+            // GLES 3.0 不保证 compute shader；使用片源峰值元数据，避免依赖峰值检测计算着色器。
+            await SetPropertyCoreAsync("options/hdr-compute-peak", "no", cancellationToken).ConfigureAwait(false);
+        }
+        finally { _videoOutputGate.Release(); }
+    }
 
     private static unsafe int SetProperty(nint handle, ulong id, string name, object value)
     {
@@ -185,13 +220,13 @@ public sealed class MpvPlayerSession : IMpvPlayerSession
 
             MpvNative.Check(MpvNative.Initialize(handle), "初始化 libmpv");
             MpvNative.SetWakeupCallback(handle, Marshal.GetFunctionPointerForDelegate(_wakeupCallback), 0);
-            MpvNative.Check(MpvNative.RequestLogMessages(handle, "error"), "订阅播放器日志");
+            MpvNative.Check(MpvNative.RequestLogMessages(handle, _logLevel), "订阅播放器日志");
             ulong observation = 1;
             foreach (var property in ObservedProperties)
                 MpvNative.Check(MpvNative.ObserveProperty(handle, observation++, property, MpvFormat.Node), $"观察属性 {property}");
 
             lock (_lifecycle) { _handle = handle; }
-            Trace.WriteLine("[libmpv] 会话初始化完成，Client API 2.5，SDR Render API 路线。");
+            Trace.WriteLine("[libmpv] 会话初始化完成，Client API 2.5，Render API 路线。");
             _ready.TrySetResult();
 
             while (!_stop)
@@ -256,8 +291,15 @@ public sealed class MpvPlayerSession : IMpvPlayerSession
         {
             ["config"] = "no", ["load-scripts"] = "no", ["osc"] = "no", ["ytdl"] = "no",
             ["input-default-bindings"] = "no", ["input-vo-keyboard"] = "no", ["terminal"] = "no",
-            ["vo"] = "libmpv", ["hwdec"] = "no", ["idle"] = "yes", ["osd-level"] = "0",
+            ["vo"] = "libmpv", ["idle"] = "yes", ["osd-level"] = "0",
+            // 固定使用 ANGLE 的 D3D11 解码纹理互操作；不支持时由 mpv 回退软件解码，禁止 copy-back。
+            ["hwdec"] = "d3d11va", ["gpu-hwdec-interop"] = "d3d11-egl", ["hwdec-software-fallback"] = "3",
+            ["target-prim"] = "bt.709", ["target-trc"] = "srgb", ["target-peak"] = "203",
+            ["tone-mapping"] = "mobius", ["hdr-compute-peak"] = "no",
             ["network-timeout"] = "10", ["video-timing-offset"] = "0",
+            // MPEG-TS demux seek 可能落在目标之后；预留解码区间，保证重建后的 exact seek
+            // 能重新解码原暂停帧。固定配置避免命令回复早于 seek 执行时恢复临时选项的竞态。
+            ["hr-seek-demuxer-offset"] = "1",
         };
         if (_testOptions is not null)
             foreach (var option in _testOptions) options[option.Key] = option.Value;

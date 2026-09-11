@@ -88,6 +88,17 @@ internal sealed class CompositionSwapChain : IDisposable
         swapChain2.MatrixTransform = Matrix3x2.CreateScale((float)(1 / rasterizationScale));
     }
 
+    /// <summary>格式本身不声明 PQ；必须确认呈现支持并显式设置与像素编码匹配的色彩空间。</summary>
+    public void SetColorSpace(ColorSpaceType colorSpace)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        using var swapChain3 = _swapChain!.QueryInterface<IDXGISwapChain3>();
+        var support = swapChain3.CheckColorSpaceSupport(colorSpace);
+        if ((support & SwapChainColorSpaceSupportFlags.Present) == 0)
+            throw new NotSupportedException($"当前图形输出不支持 {colorSpace} 呈现。");
+        swapChain3.SetColorSpace1(colorSpace);
+    }
+
     public void Present()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);

@@ -6,6 +6,9 @@ param(
     [Parameter(Mandatory)]
     [string] $NativeOutputPath,
 
+    [Parameter(Mandatory)]
+    [string] $AngleSourcePath,
+
     [string] $VsInstallPath = 'C:\Program Files\Microsoft Visual Studio\18\Community',
 
     [Parameter(Mandatory)]
@@ -14,9 +17,14 @@ param(
     [Parameter(Mandatory)]
     [string] $NinjaPath,
 
+    [Parameter(Mandatory)]
+    [string] $NasmPath,
+
     [string] $PythonPath = 'C:\Program Files\Python314\python.exe',
 
-    [string] $PythonPackagesPath
+    [string] $PythonPackagesPath,
+
+    [switch] $Incremental
 )
 
 Set-StrictMode -Version Latest
@@ -35,11 +43,11 @@ function Sync-GitSource(
     [string] $Name
 ) {
     if (-not (Test-Path -LiteralPath (Join-Path $Destination '.git'))) {
-        git clone --filter=blob:none $Repository $Destination
+        git -c http.proxy=http://127.0.0.1:7890 clone --filter=blob:none $Repository $Destination
         Assert-NativeSuccess "克隆 $Name"
     }
 
-    git -C $Destination fetch --depth 1 origin $Commit
+    git -c http.proxy=http://127.0.0.1:7890 -C $Destination fetch --depth 1 origin $Commit
     Assert-NativeSuccess "获取 $Name 锁定 commit"
     git -C $Destination checkout --detach $Commit
     Assert-NativeSuccess "检出 $Name 锁定 commit"
@@ -73,12 +81,26 @@ $source = [IO.Path]::GetFullPath($SourcePath)
 $output = [IO.Path]::GetFullPath($NativeOutputPath)
 $llvmBin = [IO.Path]::GetFullPath($LlvmBinPath)
 $ninja = [IO.Path]::GetFullPath($NinjaPath)
+$nasm = [IO.Path]::GetFullPath($NasmPath)
 $python = [IO.Path]::GetFullPath($PythonPath)
+$angleSource = [IO.Path]::GetFullPath($AngleSourcePath)
+$angleCommit = (git -C $angleSource rev-parse HEAD).Trim()
+Assert-NativeSuccess '读取 ANGLE 头文件源码 commit'
+if ($angleCommit -ne $lock.angle.commit) {
+    throw "ANGLE 头文件源码 commit 不匹配。预期 $($lock.angle.commit)，实际 $angleCommit。"
+}
+$angleInclude = Join-Path $angleSource 'include'
+if (-not (Test-Path -LiteralPath (Join-Path $angleInclude 'EGL\eglext_angle.h'))) {
+    throw "缺少锁定的 ANGLE EGL 头文件：$angleInclude"
+}
 
-foreach ($path in $llvmBin, $ninja, $python) {
+foreach ($path in $llvmBin, $ninja, $nasm, $python) {
     if (-not (Test-Path -LiteralPath $path)) {
         throw "构建工具路径不存在：$path"
     }
+}
+if ((Get-FileHash -LiteralPath $nasm -Algorithm SHA256).Hash -ne $lock.mpv.toolchain.nasmSha256) {
+    throw 'NASM 可执行文件哈希与锁定工具链不符。'
 }
 
 $devShellModule = Join-Path $VsInstallPath 'Common7\Tools\Microsoft.VisualStudio.DevShell.dll'
@@ -89,7 +111,8 @@ if (-not (Test-Path -LiteralPath $devShellModule -PathType Leaf)) {
 Import-Module $devShellModule
 Enter-VsDevShell -VsInstallPath $VsInstallPath -SkipAutomaticLocation `
     -DevCmdArguments '-arch=x64 -host_arch=x64'
-$env:Path = "$llvmBin;$env:Path"
+$env:Path = "$(Split-Path -Parent $nasm);$llvmBin;$env:Path"
+$env:INCLUDE = "$angleInclude;$env:INCLUDE"
 $env:CC = 'clang-cl'
 $env:CXX = 'clang-cl'
 $env:CC_LD = 'lld-link'
@@ -106,6 +129,12 @@ Sync-GitSource $lock.mpv.repository $lock.mpv.commit $source 'mpv'
 Apply-LockedPatch $source `
     (Join-Path $PSScriptRoot 'patches\mpv-msvc-rc-codepage.patch') `
     'mpv MSVC rc.exe UTF-8 codepage'
+Apply-LockedPatch $source `
+    (Join-Path $PSScriptRoot 'patches\mpv-angle-loaded-module.patch') `
+    'mpv ANGLE 仅复用宿主已验证模块'
+Apply-LockedPatch $source `
+    (Join-Path $PSScriptRoot 'patches\mpv-angle-device-query-extension.patch') `
+    'mpv ANGLE client device query 扩展兼容'
 
 $subprojects = Join-Path $source 'subprojects'
 New-Item -ItemType Directory -Force -Path $subprojects | Out-Null
@@ -115,7 +144,7 @@ Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot 'mpv-subprojects') -Filter '
 $dependencySources = @(
     @{
         Name = 'FFmpeg'
-        Repository = 'https://github.com/FFmpeg/FFmpeg.git'
+        Repository = $lock.mpv.dependencies.ffmpeg.repository
         Commit = $lock.mpv.dependencies.ffmpeg.commit
         Path = Join-Path $subprojects 'ffmpeg'
     },
@@ -130,6 +159,12 @@ $dependencySources = @(
         Repository = 'https://code.videolan.org/videolan/libplacebo.git'
         Commit = $lock.mpv.dependencies.libplacebo.commit
         Path = Join-Path $subprojects 'libplacebo'
+    },
+    @{
+        Name = 'dav1d'
+        Repository = $lock.mpv.dependencies.dav1d.repository
+        Commit = $lock.mpv.dependencies.dav1d.commit
+        Path = Join-Path $subprojects 'dav1d'
     }
 )
 
@@ -152,7 +187,7 @@ $requiredSubmodules = @(
     '3rdparty/jinja',
     '3rdparty/markupsafe'
 )
-git -C $libplaceboPath submodule update --init --depth 1 -- @requiredSubmodules
+git -c http.proxy=http://127.0.0.1:7890 -C $libplaceboPath submodule update --init --depth 1 -- @requiredSubmodules
 Assert-NativeSuccess '初始化 libplacebo 构建子模块'
 
 $vulkanHeadersCommit = (git -C (Join-Path $libplaceboPath '3rdparty\Vulkan-Headers') rev-parse HEAD).Trim()
@@ -165,7 +200,8 @@ $buildDirectory = Join-Path $source 'build-win-x64-release'
 $options = @($lock.mpv.mesonOptions)
 $setupArgs = @('-m', 'mesonbuild.mesonmain', 'setup')
 if (Test-Path -LiteralPath $buildDirectory -PathType Container) {
-    $setupArgs += '--wipe'
+    $setupArgs += $(if ($Incremental) { '--reconfigure' } else { '--wipe' })
+    if ($Incremental) { $setupArgs += '--clearcache' }
 }
 $setupArgs += @($buildDirectory, $source)
 $setupArgs += $options

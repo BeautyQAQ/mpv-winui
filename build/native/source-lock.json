@@ -51,7 +51,7 @@
       "-Dgl=enabled",
       "-Dplain-gl=enabled",
       "-Degl=disabled",
-      "-Degl-angle=disabled",
+      "-Degl-angle=enabled",
       "-Degl-angle-lib=disabled",
       "-Degl-angle-win32=disabled",
       "-Dshaderc=disabled",
@@ -68,6 +68,14 @@
       "-Dffmpeg:programs=disabled",
       "-Dffmpeg:tests=disabled",
       "-Dffmpeg:avdevice=disabled",
+      "-Dffmpeg:libdav1d=enabled",
+      "-Dffmpeg:libdav1d_decoder=enabled",
+      "-Ddav1d:default_library=static",
+      "-Ddav1d:bitdepths=8,16",
+      "-Ddav1d:enable_asm=true",
+      "-Ddav1d:enable_tools=false",
+      "-Ddav1d:enable_tests=false",
+      "-Ddav1d:enable_examples=false",
       "-Dlibass:test=disabled",
       "-Dlibass:compare=disabled",
       "-Dlibass:fontconfig=disabled",
@@ -105,7 +113,8 @@
       "-Dharfbuzz:utilities=disabled"
     ],
     "dependencies": {
-      "ffmpeg": { "version": "8.0.3", "commit": "74d461d3ed8a9fdd956336fd2a6a77ebc1bb91a9", "license": "LGPL-2.1-or-later" },
+      "ffmpeg": { "version": "8.0.3", "repository": "https://gitlab.freedesktop.org/gstreamer/meson-ports/ffmpeg.git", "commit": "74d461d3ed8a9fdd956336fd2a6a77ebc1bb91a9", "license": "LGPL-2.1-or-later" },
+      "dav1d": { "version": "1.5.4", "repository": "https://code.videolan.org/videolan/dav1d.git", "commit": "54706fc6bc0cdecab7e9593974a4039cc038fca7", "license": "BSD-2-Clause", "licenseSha256": "225BBEC3AFC382F1BB85F7BB01655F3A37ED5E693A4FA18A64C0C5BAB48C854E" },
       "libass": { "version": "0.17.4", "commit": "bbb3c7f1570a4a021e52683f3fbdf74fe492ae84", "license": "ISC" },
       "libplacebo": { "version": "7.351.0", "commit": "3188549fba13bbdf3a5a98de2a38c2e71f04e21e", "license": "LGPL-2.1-or-later" },
       "vulkanHeaders": { "commit": "cacef3039d277c448c89336290ec3937270b0996", "license": "Apache-2.0", "usage": "build-time headers only" },
@@ -118,7 +127,11 @@
     "toolchain": {
       "clangVersion": "23.0.0git",
       "llvmCommit": "53d18800eda3b7407e53366f27ca78e922c6e0db",
-      "mesonVersion": "1.9.2"
+      "mesonVersion": "1.9.2",
+      "nasmVersion": "2.16.03",
+      "nasmSha256": "A93276636266516421CC9B422F47476C21F7A2949F1AE251556B2F1D33A3BE04",
+      "nasmArchiveUrl": "https://www.nasm.us/pub/nasm/releasebuilds/2.16.03/win64/nasm-2.16.03-win64.zip",
+      "nasmArchiveSha256": "3EE4782247BCB874378D02F7EAB4E294A84D3D15F3F6EE2DE2F47A46AA7226E6"
     }
   },
   "angle": {

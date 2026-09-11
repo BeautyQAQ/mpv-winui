@@ -12,7 +12,7 @@
       "group": "mpv",
       "loadOrder": 100,
       "logicalNames": [ "mpv" ],
-      "sha256": "D0D01C2AF708423E6B281ADC58A39FAFD1FB2CFA8FE76D437D76383F088BA228"
+      "sha256": "932D70710EECAA1D686D1E49674AE9A13C555E6C4701695858B5163A8C5DFAAB"
     },
     {
       "fileName": "d3dcompiler_47.dll",

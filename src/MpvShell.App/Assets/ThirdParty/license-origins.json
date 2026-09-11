@@ -1,0 +1,216 @@
+{
+  "schemaVersion": 1,
+  "description": "许可证及版权说明原文的来源路径与 SHA-256；版本和构建入口见 NOTICES.md。",
+  "files": [
+    {
+      "path": "mpv/Copyright",
+      "sourceRoot": "native-sources",
+      "sourcePath": "mpv/Copyright",
+      "sha256": "A09691405E4C9C294F02122D28DE355B8C360BE4B84ACCEFB8A443E99D1D648C"
+    },
+    {
+      "path": "mpv/LICENSE.LGPL",
+      "sourceRoot": "native-sources",
+      "sourcePath": "mpv/LICENSE.LGPL",
+      "sha256": "13F4287CD5BE7913CF1D39434B6E9FE779BE1E56744F6D8F9A5A0121D62F7F17"
+    },
+    {
+      "path": "ffmpeg/LICENSE.md",
+      "sourceRoot": "native-sources",
+      "sourcePath": "mpv/subprojects/ffmpeg/LICENSE.md",
+      "sha256": "36F6E2CB63F6A40A72B5C1B6169FB03F338D7ECCD336FB3CCD4DCC0B49116DD1"
+    },
+    {
+      "path": "ffmpeg/COPYING.LGPLv2.1",
+      "sourceRoot": "native-sources",
+      "sourcePath": "mpv/subprojects/ffmpeg/COPYING.LGPLv2.1",
+      "sha256": "37828F96B745455C387A19946BC005B5E0B7C4CEF782BBD67E9DE5130D7D0BDC"
+    },
+    {
+      "path": "dav1d/COPYING",
+      "sourceRoot": "native-sources",
+      "sourcePath": "mpv/subprojects/dav1d/COPYING",
+      "sha256": "225BBEC3AFC382F1BB85F7BB01655F3A37ED5E693A4FA18A64C0C5BAB48C854E"
+    },
+    {
+      "path": "libass/COPYING",
+      "sourceRoot": "native-sources",
+      "sourcePath": "mpv/subprojects/libass/COPYING",
+      "sha256": "3DC660F0B5FF4F727656CD2C4B81B10BA9D457860906CC3D8E5A73BCBB651F6D"
+    },
+    {
+      "path": "libplacebo/LICENSE",
+      "sourceRoot": "native-sources",
+      "sourcePath": "mpv/subprojects/libplacebo/LICENSE",
+      "sha256": "575888BE9AC31801886BABCA6456E1BEB346FA4FB3DD76F52111F8048E38D58A"
+    },
+    {
+      "path": "libplacebo/fast_float/LICENSE-APACHE",
+      "sourceRoot": "native-sources",
+      "sourcePath": "mpv/subprojects/libplacebo/3rdparty/fast_float/LICENSE-APACHE",
+      "sha256": "DF3886F99EB4416EDE22BF0F5B5135BF968751D7925F83840C4CE185462BD63B"
+    },
+    {
+      "path": "libplacebo/fast_float/LICENSE-BOOST",
+      "sourceRoot": "native-sources",
+      "sourcePath": "mpv/subprojects/libplacebo/3rdparty/fast_float/LICENSE-BOOST",
+      "sha256": "36266A8FD073568394CB81CDB2B124F7FDAE2C64C1A7ED09DB34B4D22EFA2951"
+    },
+    {
+      "path": "libplacebo/fast_float/LICENSE-MIT",
+      "sourceRoot": "native-sources",
+      "sourcePath": "mpv/subprojects/libplacebo/3rdparty/fast_float/LICENSE-MIT",
+      "sha256": "BF1B57355FECA8FCE77EE95F48002F8D4789FB71B30EC7599C06CDA4901FBB2B"
+    },
+    {
+      "path": "libplacebo/glad/LICENSE",
+      "sourceRoot": "native-sources",
+      "sourcePath": "mpv/subprojects/libplacebo/3rdparty/glad/LICENSE",
+      "sha256": "EC2B8BBF86D22622B9BBADF36A6CB7032C0F5B8C4A1766D4DB05BF41B4DC451D"
+    },
+    {
+      "path": "libplacebo/Vulkan-Headers/LICENSE.md",
+      "sourceRoot": "native-sources",
+      "sourcePath": "mpv/subprojects/libplacebo/3rdparty/Vulkan-Headers/LICENSE.md",
+      "sha256": "F43BA543D73F08F7401D99B697B2B741704EB22B5447A5021FD92B279B297646"
+    },
+    {
+      "path": "libplacebo/Vulkan-Headers/Apache-2.0.txt",
+      "sourceRoot": "native-sources",
+      "sourcePath": "mpv/subprojects/libplacebo/3rdparty/Vulkan-Headers/LICENSES/Apache-2.0.txt",
+      "sha256": "3DDF9BE5C28FE27DAD143A5DC76EEA25222AD1DD68934A047064E56ED2FA40C5"
+    },
+    {
+      "path": "libplacebo/Vulkan-Headers/MIT.txt",
+      "sourceRoot": "native-sources",
+      "sourcePath": "mpv/subprojects/libplacebo/3rdparty/Vulkan-Headers/LICENSES/MIT.txt",
+      "sha256": "051DAAE2DAE99C2B0FC9D8363CF704B9456AE0E3C89589AC755D506A0B2C10C3"
+    },
+    {
+      "path": "freetype/LICENSE.TXT",
+      "sourceRoot": "native-sources",
+      "sourcePath": "mpv/subprojects/freetype-2.14.3/LICENSE.TXT",
+      "sha256": "BD36C8B474855FA294C2EC5C184544478EF3720AAD37D65A6296A4F264FD2D3B"
+    },
+    {
+      "path": "freetype/FTL.TXT",
+      "sourceRoot": "native-sources",
+      "sourcePath": "mpv/subprojects/freetype-2.14.3/docs/FTL.TXT",
+      "sha256": "5A5EE54C5001BBAD1CDC1A57CC3DD4C42199B2DA09D39C7EE41FAB002D02967F"
+    },
+    {
+      "path": "freetype/bdf-README",
+      "sourceRoot": "native-sources",
+      "sourcePath": "mpv/subprojects/freetype-2.14.3/src/bdf/README",
+      "sha256": "7984455E7E5A9FABA3797C8BF095FBE10CC846316B7320AFF8C58402E22B82FE"
+    },
+    {
+      "path": "freetype/pcf-README",
+      "sourceRoot": "native-sources",
+      "sourcePath": "mpv/subprojects/freetype-2.14.3/src/pcf/README",
+      "sha256": "18D9782898D9EAC04476E2F744678137B2A889689ED3E923E052FC396A86F86B"
+    },
+    {
+      "path": "fribidi/COPYING",
+      "sourceRoot": "native-sources",
+      "sourcePath": "mpv/subprojects/fribidi-1.0.16/COPYING",
+      "sha256": "32434AFCC8666BA060E111D715BFDB6C2D5DD8A35FA4D3AB8AD67D8F850D2F2B"
+    },
+    {
+      "path": "harfbuzz/COPYING",
+      "sourceRoot": "native-sources",
+      "sourcePath": "mpv/subprojects/harfbuzz-13.0.1/COPYING",
+      "sha256": "BA8F810F2455C2F08E2D56BB49B72F37FCF68F1F4FADE38977CFD7372050AD64"
+    },
+    {
+      "path": "harfbuzz/ms-use/COPYING",
+      "sourceRoot": "native-sources",
+      "sourcePath": "mpv/subprojects/harfbuzz-13.0.1/src/ms-use/COPYING",
+      "sha256": "C2CFCCB812FE482101A8F04597DFC5A9991A6B2748266C47AC91B6A5AAE15383"
+    },
+    {
+      "path": "zlib/LICENSE",
+      "sourceRoot": "native-sources",
+      "sourcePath": "mpv/subprojects/zlib-1.3.2/LICENSE",
+      "sha256": "E32FF4E00D9D94930537635291DA39E7E612703334BF6FDE8C7F1686FE8A45A2"
+    },
+    {
+      "path": "angle/LICENSE",
+      "sourceRoot": "native-sources",
+      "sourcePath": "angle/LICENSE",
+      "sha256": "54AFF7276217DF9F6B5181613999D208C9E40D2B1D51BF55217837E6871A4A63"
+    },
+    {
+      "path": "angle/xxhash/LICENSE",
+      "sourceRoot": "native-sources",
+      "sourcePath": "angle/src/common/third_party/xxhash/LICENSE",
+      "sha256": "A2973411D278045BDE3C7161B911E0680D53E2D73D6457C77068D2E55D816D67"
+    },
+    {
+      "path": "angle/volk/LICENSE.md",
+      "sourceRoot": "native-sources",
+      "sourcePath": "angle/src/third_party/volk/LICENSE.md",
+      "sha256": "FC0FAB6EE933CC00FBADE71121E159C88E3D4CE22365F3CEEDBA10E4D458C28C"
+    },
+    {
+      "path": "angle/astc-encoder/LICENSE.txt",
+      "sourceRoot": "native-sources",
+      "sourcePath": "angle/third_party/astc-encoder/src/LICENSE.txt",
+      "sha256": "A2AEA85FAC9BA9ED4985FE513D2B0D321C87A02C2A447C65F8E59DCFE79F55ED"
+    },
+    {
+      "path": "angle/zlib/LICENSE",
+      "sourceRoot": "native-sources",
+      "sourcePath": "angle/third_party/zlib/LICENSE",
+      "sha256": "439C75AB12B340C5362B9D4B08FF05EC3A4D0EB7667A6FFF49A9B16D8795C78E"
+    },
+    {
+      "path": "angle/jsoncpp/LICENSE",
+      "sourceRoot": "native-sources",
+      "sourcePath": "angle/third_party/jsoncpp/source/LICENSE",
+      "sha256": "ECF1A272AF5D660ED0054701B5662E6A9F208B56502DC67983FCE60A657D58B2"
+    },
+    {
+      "path": "angle/Vulkan-Headers/LICENSE.md",
+      "sourceRoot": "native-sources",
+      "sourcePath": "angle/third_party/vulkan-headers/src/LICENSE.md",
+      "sha256": "A2D4407962C909F84807774CBFE9FAD05A1EBE972472C08ED5AD43D482AFD288"
+    },
+    {
+      "path": "angle/Vulkan-Headers/Apache-2.0.txt",
+      "sourceRoot": "native-sources",
+      "sourcePath": "angle/third_party/vulkan-headers/src/LICENSES/Apache-2.0.txt",
+      "sha256": "3DDF9BE5C28FE27DAD143A5DC76EEA25222AD1DD68934A047064E56ED2FA40C5"
+    },
+    {
+      "path": "angle/Vulkan-Headers/MIT.txt",
+      "sourceRoot": "native-sources",
+      "sourcePath": "angle/third_party/vulkan-headers/src/LICENSES/MIT.txt",
+      "sha256": "051DAAE2DAE99C2B0FC9D8363CF704B9456AE0E3C89589AC755D506A0B2C10C3"
+    },
+    {
+      "path": "angle/Vulkan-Loader/LICENSE.txt",
+      "sourceRoot": "native-sources",
+      "sourcePath": "angle/third_party/vulkan-loader/src/LICENSE.txt",
+      "sha256": "557BD2CC07EFF373F3F26C8D5726FEFE8E7FC4ADD97796C2FBF24F74A200214A"
+    },
+    {
+      "path": "angle/SPIRV-Headers/LICENSE",
+      "sourceRoot": "native-sources",
+      "sourcePath": "angle/third_party/spirv-headers/src/LICENSE",
+      "sha256": "841A6E68E16BFC98DB8ECA98D7002D4F2B508C56CE865FD6F1726BE30ED489EB"
+    },
+    {
+      "path": "windows-sdk/sdk_license.rtf",
+      "sourceRoot": "windows-sdk",
+      "sourcePath": "Licenses/10.0.26100.0/sdk_license.rtf",
+      "sha256": "0F4A26AC9DC50066F8A1BFEAAF3F092D1B9E4791DF5487B9F3C31E7C3DC4D7F5"
+    },
+    {
+      "path": "windows-sdk/sdk_third_party_notices.rtf",
+      "sourceRoot": "windows-sdk",
+      "sourcePath": "Licenses/10.0.26100.0/sdk_third_party_notices.rtf",
+      "sha256": "EBB6640A8246B39B70322C5CEC9AAD7A71E86EA7B86C9C604D3A7F3FF1B30E89"
+    }
+  ]
+}

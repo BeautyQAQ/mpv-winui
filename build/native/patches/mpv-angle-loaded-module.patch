@@ -1,0 +1,15 @@
+diff --git a/video/out/opengl/angle_dynamic.c b/video/out/opengl/angle_dynamic.c
+--- a/video/out/opengl/angle_dynamic.c
++++ b/video/out/opengl/angle_dynamic.c
+@@ -20,8 +20,9 @@ static mp_once angle_load_once = MP_STATIC_ONCE_INITIALIZER;
+ 
+ static void angle_do_load(void)
+ {
+-    // Note: we let this handle "leak", as the functions remain valid forever.
+-    HANDLE angle_dll = LoadLibraryW(L"LIBEGL.DLL");
++    // 宿主先校验并加载固定的 ANGLE，且在进程生存期内持有模块引用。
++    // 仅复用已加载模块，禁止通过当前目录或 PATH 隐式查找其他 DLL。
++    HANDLE angle_dll = GetModuleHandleW(L"LIBEGL.DLL");
+     if (!angle_dll)
+         return;
+ #define ANGLE_LOAD_ENTRY(NAME, VAR) \
