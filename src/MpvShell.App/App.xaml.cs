@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Xaml;
+using MpvShell.App.Diagnostics;
 using MpvShell.App.Services;
 using MpvShell.App.ViewModels;
 using MpvShell.Player.Abstractions;
@@ -11,23 +12,24 @@ namespace MpvShell.App;
 public partial class App : Application
 {
     private Window? _window;
+    private readonly SessionTraceListener? _sessionLog;
     public IServiceProvider Services { get; }
     public Window? MainWindowInstance => _window;
 
     public App()
     {
-        var logDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "MpvShell", "logs");
-        try
-        {
-            Directory.CreateDirectory(logDirectory);
-            Trace.Listeners.Add(new TextWriterTraceListener(Path.Combine(logDirectory, $"session-{DateTime.Now:yyyyMMdd-HHmmss}-{Environment.ProcessId}.log")));
-            Trace.AutoFlush = true;
-            Trace.WriteLine($"[{DateTimeOffset.Now:O}] MpvShell 启动，进程 {Environment.ProcessId}");
-        }
-        catch (IOException) { }
-        catch (UnauthorizedAccessException) { }
+        _sessionLog = SessionLog.Start();
+        UnhandledException += (_, args) => LogUnhandledException("WinUI", args.Exception);
+        AppDomain.CurrentDomain.UnhandledException += (_, args) => LogUnhandledException("AppDomain", args.ExceptionObject);
+        TaskScheduler.UnobservedTaskException += (_, args) => LogUnhandledException("TaskScheduler", args.Exception);
+        AppDomain.CurrentDomain.ProcessExit += (_, _) => _sessionLog?.Close();
         InitializeComponent();
-        UnhandledException += (_, args) => Trace.WriteLine($"未处理异常：{args.Exception}");
+
+        static void LogUnhandledException(string source, object exception)
+        {
+            Trace.WriteLine($"[app] {source} 未处理异常：{exception}");
+            Trace.Flush();
+        }
 
         var services = new ServiceCollection();
         services.AddSingleton<MpvPlayerSession>();
@@ -45,6 +47,11 @@ public partial class App : Application
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
         _window = Services.GetRequiredService<MainWindow>();
+        _window.Closed += (_, _) =>
+        {
+            Trace.WriteLine("[app] 主窗口已关闭，播放资源已释放。");
+            _sessionLog?.Close();
+        };
         _window.Activate();
     }
 }

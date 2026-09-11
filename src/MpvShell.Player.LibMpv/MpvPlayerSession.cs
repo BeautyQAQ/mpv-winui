@@ -40,12 +40,21 @@ public sealed partial class MpvPlayerSession : IMpvPlayerSession
 
     internal event Action<SessionEvent>? EventReceived;
 
-    public MpvPlayerSession() : this(null) { }
+    public MpvPlayerSession() : this(null, NormalizeLogLevel(Environment.GetEnvironmentVariable("MPVSHELL_LOG_LEVEL"))) { }
+
+    internal bool IsDebugLoggingEnabled => _logLevel is "v" or "debug" or "trace";
+
+    internal static string NormalizeLogLevel(string? requestedLevel) => requestedLevel?.Trim().ToLowerInvariant() switch
+    {
+        "no" => "no", "fatal" => "fatal", "error" => "error", "warn" or "warning" => "warn",
+        "info" => "info", "v" or "verbose" => "v", "debug" => "debug", "trace" => "trace",
+        _ => "error",
+    };
 
     internal MpvPlayerSession(IReadOnlyDictionary<string, string>? testOptions, string logLevel = "error")
     {
         _testOptions = testOptions;
-        _logLevel = logLevel;
+        _logLevel = NormalizeLogLevel(logLevel);
         _wakeupCallback = _ =>
         {
             // 回调不解析事件、不调用 Client API，不允许托管异常越过 C ABI。
@@ -210,8 +219,12 @@ public sealed partial class MpvPlayerSession : IMpvPlayerSession
             if (handle == 0)
                 throw new InvalidOperationException("无法创建 libmpv 播放会话。");
 
+            MpvNative.Check(MpvNative.RequestLogMessages(handle, _logLevel), "订阅播放器日志");
+            Trace.WriteLine($"[libmpv] 日志订阅等级：{_logLevel}。");
+
             foreach (var (name, value) in InitializationOptions())
             {
+                if (IsDebugLoggingEnabled) Trace.WriteLine($"[libmpv/options] {name}={value}");
                 var result = MpvNative.SetOptionString(handle, name, value);
                 // 锁定产物编译时禁用 Lua/JavaScript；相应脚本选项可能不存在。
                 if (result == -5 && name is "load-scripts" or "osc" or "ytdl") continue;
@@ -220,7 +233,6 @@ public sealed partial class MpvPlayerSession : IMpvPlayerSession
 
             MpvNative.Check(MpvNative.Initialize(handle), "初始化 libmpv");
             MpvNative.SetWakeupCallback(handle, Marshal.GetFunctionPointerForDelegate(_wakeupCallback), 0);
-            MpvNative.Check(MpvNative.RequestLogMessages(handle, _logLevel), "订阅播放器日志");
             ulong observation = 1;
             foreach (var property in ObservedProperties)
                 MpvNative.Check(MpvNative.ObserveProperty(handle, observation++, property, MpvFormat.Node), $"观察属性 {property}");
@@ -250,6 +262,7 @@ public sealed partial class MpvPlayerSession : IMpvPlayerSession
         }
         catch (Exception ex)
         {
+            Trace.WriteLine($"[libmpv] 会话初始化或事件处理失败：{ex}");
             lock (_lifecycle) _faulted = true;
             _ready.TrySetException(ex);
             Publish(new SessionEvent(MpvEventId.Shutdown, Error: ex));
@@ -332,15 +345,20 @@ public sealed partial class MpvPlayerSession : IMpvPlayerSession
         }
         else if (nativeEvent.Id == MpvEventId.LogMessage)
         {
-            // mpv_event_log_message 的第三个字段为 UTF-8 text，不记录含令牌的原始 URL。
+            // mpv_event_log_message 的前三个字段为 UTF-8 prefix / level / text。
+            var prefix = Marshal.PtrToStringUTF8(Marshal.ReadIntPtr(nativeEvent.Data)) ?? "unknown";
+            var level = Marshal.PtrToStringUTF8(Marshal.ReadIntPtr(nativeEvent.Data, IntPtr.Size)) ?? "unknown";
             var message = Marshal.PtrToStringUTF8(Marshal.ReadIntPtr(nativeEvent.Data, 2 * IntPtr.Size)) ?? "";
-            Trace.WriteLine("[libmpv] " + Regex.Replace(message, @"https?://[^\s]+", "[媒体地址]", RegexOptions.IgnoreCase));
+            Trace.WriteLine(FormatLogMessage(prefix, level, message));
         }
         else if (nativeEvent.Id == MpvEventId.QueueOverflow)
             Publish(new SessionEvent(nativeEvent.Id, Error: new InvalidOperationException("播放器事件队列溢出，请重新加载媒体。")));
         else
             Publish(new SessionEvent(nativeEvent.Id));
     }
+
+    internal static string FormatLogMessage(string prefix, string level, string message) =>
+        $"[libmpv/{prefix}/{level}] " + Regex.Replace(message.TrimEnd('\r', '\n'), @"https?://[^\s]+", "[媒体地址]", RegexOptions.IgnoreCase);
 
     private void Publish(SessionEvent playerEvent)
     {

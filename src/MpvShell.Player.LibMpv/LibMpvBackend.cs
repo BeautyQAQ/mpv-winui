@@ -31,6 +31,7 @@ public sealed class LibMpvBackend : IPlayerBackend
     private bool _isBuffering;
     private TaskCompletionSource? _loadCompletion;
     private int _disposed;
+    private long _lastDiagnosticTimestamp;
 
     public LibMpvBackend(MpvPlayerSession session)
     {
@@ -178,7 +179,7 @@ public sealed class LibMpvBackend : IPlayerBackend
                 return;
             if (playerEvent.Error is not null)
             {
-                Trace.WriteLine($"[libmpv] 播放错误：{playerEvent.Error.Message}");
+                Trace.WriteLine($"[libmpv] 播放错误：{playerEvent.Error}");
                 _mediaActive = false;
                 PublishBuffering(false);
                 Publish(new BackendFaulted(playerEvent.Error.Message));
@@ -215,6 +216,7 @@ public sealed class LibMpvBackend : IPlayerBackend
                         _loadCompletion.TrySetException(playerEvent.Error ?? new InvalidOperationException("媒体加载已中止。"));
                     if (playerEvent.Value is 0) MarkEnded();
                     PublishState();
+                    LogPlaybackDiagnostics(force: true);
                     break;
                 case MpvEventId.Shutdown:
                     _loadCompletion?.TrySetException(playerEvent.Error ?? new InvalidOperationException("播放器会话已关闭。"));
@@ -259,6 +261,18 @@ public sealed class LibMpvBackend : IPlayerBackend
                 if (next != _info) { _info = next; Publish(new MediaInfoChanged(_info)); }
                 break;
         }
+        LogPlaybackDiagnostics(force: property is "hwdec-current" or "hwdec-interop" or "video-params"
+            or "pause" or "idle-active" or "paused-for-cache" or "video-codec" or "audio-codec-name");
+    }
+
+    private void LogPlaybackDiagnostics(bool force = false)
+    {
+        if (!_session.IsDebugLoggingEnabled) return;
+        var now = Stopwatch.GetTimestamp();
+        if (!force && _lastDiagnosticTimestamp != 0 && Stopwatch.GetElapsedTime(_lastDiagnosticTimestamp, now).TotalSeconds < 5) return;
+        _lastDiagnosticTimestamp = now;
+        Trace.WriteLine($"[playback] position={_state.PositionSeconds:0.000}s / {_state.DurationSeconds:0.000}s; " +
+            $"playing={_state.IsPlaying}; paused={_paused}; buffering={_isBuffering}; loaded={_loaded}; {_info}");
     }
 
     private void MarkEnded()

@@ -51,16 +51,18 @@ internal sealed class D3D11DeviceManager : IDisposable
         ID3D11Device tempDevice;
         ID3D11DeviceContext tempContext;
 
-        if (D3D11.D3D11CreateDevice(
+        var hardwareResult = D3D11.D3D11CreateDevice(
             IntPtr.Zero, // 默认适配器
             DriverType.Hardware,
             creationFlags,
             featureLevels,
             out tempDevice,
             out _,
-            out tempContext).Failure)
+            out tempContext);
+        if (hardwareResult.Failure)
         {
             // 回退到 WARP 设备。
+            Trace.WriteLine($"[D3D11DeviceManager] 硬件设备创建失败：{hardwareResult}；尝试 WARP 软件设备。");
             D3D11.D3D11CreateDevice(
                 IntPtr.Zero,
                 DriverType.Warp,
@@ -78,7 +80,11 @@ internal sealed class D3D11DeviceManager : IDisposable
         _dxgiDevice = _device.QueryInterface<IDXGIDevice>();
         _adapter = _dxgiDevice.GetParent<IDXGIAdapter>();
 
-        Debug.WriteLine("[D3D11DeviceManager] D3D11 设备已初始化");
+        var description = _adapter.Description;
+        Trace.WriteLine($"[D3D11DeviceManager] D3D11 已初始化；设备 {description.Description}；" +
+            $"Vendor=0x{description.VendorId:X4} Device=0x{description.DeviceId:X4}；" +
+            $"专用显存 {(ulong)description.DedicatedVideoMemory / (1024 * 1024)} MiB；" +
+            $"驱动类型 {(hardwareResult.Failure ? "WARP" : "Hardware")}；创建标志 {creationFlags}。");
     }
 
     /// <summary>

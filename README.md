@@ -43,4 +43,10 @@ dotnet test mpv-winui.slnx -p:Platform=x64 --no-build --no-restore
 
 应用诊断日志位于 `%LOCALAPPDATA%\MpvShell\logs`。原生媒体日志对网络地址脱敏；测试素材不随项目提交。
 
+## 另一台电脑的 debug 日志测试包
+
+使用 PowerShell 7 运行 `build/testing/publish-rtx3070.ps1 -IncludeTestMedia`，在 `artifacts/rtx3070/` 生成独立 ZIP。它使用 Release x64 自包含构建，附带调试符号、debug 日志启动器、日志收集器与构建/源码哈希清单。`-IncludeTestMedia` 使用已经生成并通过哈希校验的三份 4K 合成样片；不加此参数时不附带样片。
+
+在测试机上完整解压后双击 `Start-Debug.cmd`。启动器通过 `MPVSHELL_LOG_LEVEL=debug`、`MPVSHELL_LOG_DIRECTORY` 为本次运行开启详细文件日志，默认写入包内 `logs/<运行标识>/`，同时记录 Windows、GPU/驱动和进程退出信息。测试完关闭播放器，在 `Test-Notes.txt` 记录复现步骤，再双击 `Collect-Logs.cmd`，把生成的日志 ZIP 带回开发机。详见包内 `README-测试说明.md`。直接运行 EXE 仍使用默认日志配置。
+
 当前优先使用 D3D11VA，经 ANGLE 直接导入 GPU 解码帧；不可用时回退软件解码，信息面板报告实际结果。完整 HDR、DPI/多显示器和长时间性能矩阵尚未验收。HLS 尚未单独实测，“最近打开”仅保存在本次进程内。完整 Phase 0 仍未验收，详见实施记录。

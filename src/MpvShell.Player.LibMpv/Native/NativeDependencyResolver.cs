@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 
 namespace MpvShell.Player.LibMpv.Native;
@@ -94,6 +95,7 @@ public static class NativeDependencyResolver
             try
             {
                 Handles.Add(asset.FileName, NativeLibrary.Load(verification.AssetPaths[asset.FileName]));
+                Trace.WriteLine($"[native] 已校验并加载 {asset.FileName}；SHA-256={asset.Sha256}。");
             }
             catch (Exception ex) when (ex is DllNotFoundException or BadImageFormatException)
             {
