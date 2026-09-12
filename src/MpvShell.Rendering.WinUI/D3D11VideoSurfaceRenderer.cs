@@ -38,9 +38,14 @@ public sealed partial class D3D11VideoSurfaceRenderer : IVideoSurfaceRenderer
     private AngleContext? _angle;
     private MpvRenderContext? _renderContext;
     private VideoSurfaceSize _currentSize;
+    // _canPresent 只控制是否向 SwapChain 呈现；为 false 时仍以“跳过绘制”方式响应 mpv 的渲染请求，
+    // 否则 core 每帧等待 200 ms 超时并计为 VO 丢帧。_renderSuspended 才完全停止调用 Render API，
+    // 仅用于图形故障、恢复重建与终态。
     private bool _canPresent;
+    private bool _renderSuspended;
     private bool _forceRedraw;
     private long _presentedFrames;
+    private long _skippedFrames;
     private long _frameWakeTimestamp;
     private double _maximumRenderMilliseconds;
     private double _maximumPresentMilliseconds;
@@ -122,7 +127,7 @@ public sealed partial class D3D11VideoSurfaceRenderer : IVideoSurfaceRenderer
         finally { _lifecycle.Release(); }
     }
 
-    /// <summary>显示器状态来自 Windows，源动态范围来自后端强类型信息；切换期间停止呈现。</summary>
+    /// <summary>显示器状态来自 Windows，源动态范围来自后端强类型信息；切换期间停止呈现但继续响应 mpv 渲染请求。</summary>
     public async ValueTask UpdateOutputAsync(bool isHdrSource, DisplayOutputCapabilities capabilities,
         CancellationToken cancellationToken)
     {
@@ -170,13 +175,16 @@ public sealed partial class D3D11VideoSurfaceRenderer : IVideoSurfaceRenderer
     }
 
     // 调用方持有生命周期锁；普通 mpv 属性只在命令域执行，不在渲染线程同步等待。
+    // 期间只停止呈现，渲染线程继续以跳过绘制的方式消费帧，mpv 的色彩选项更新不会被 VO 等待拖慢。
     private async Task ChangeOutputCoreAsync(VideoOutputConfiguration output)
     {
-        await _worker!.InvokeAsync(() => _canPresent = false).ConfigureAwait(false);
+        long skippedBefore = 0;
+        await _worker!.InvokeAsync(() => { _canPresent = false; skippedBefore = _skippedFrames; }).ConfigureAwait(false);
         if (_surface is not null)
             await OnUiAsync(_dispatcher!, () => SetSwapChain(_surface, 0)).ConfigureAwait(false);
         await _session!.ConfigureVideoOutputAsync(output.Mode, output.PeakLuminance, CancellationToken.None).ConfigureAwait(false);
         nint pointer = 0;
+        long skippedDuringChange = 0;
         await _worker.InvokeAsync(() =>
         {
             _angle!.ReleaseBackBuffer();
@@ -191,11 +199,12 @@ public sealed partial class D3D11VideoSurfaceRenderer : IVideoSurfaceRenderer
             _currentSize = size;
             _activeOutput = output;
             pointer = _swapChain.NativePointer;
+            skippedDuringChange = _skippedFrames - skippedBefore;
         }).ConfigureAwait(false);
         if (_surface is not null)
             await OnUiAsync(_dispatcher!, () => SetSwapChain(_surface, pointer)).ConfigureAwait(false);
         await _worker.InvokeAsync(() => { _canPresent = _surface is not null; _forceRedraw = true; }).ConfigureAwait(false);
-        Log($"输出已重配：{output.Format} / {output.ColorSpace}，目标峰值 {output.PeakLuminance:0} nit；保留当前媒体与渲染上下文。");
+        Log($"输出已重配：{output.Format} / {output.ColorSpace}，目标峰值 {output.PeakLuminance:0} nit；保留当前媒体与渲染上下文；重配期间跳过呈现 {skippedDuringChange} 帧。");
     }
 
     private void PublishOutputStatus()
@@ -314,6 +323,7 @@ public sealed partial class D3D11VideoSurfaceRenderer : IVideoSurfaceRenderer
             });
             _currentSize = size;
             _forceRedraw = true;
+            _renderSuspended = false;
 #if DEBUG
             _testGraphicsGeneration++;
 #endif
@@ -346,7 +356,12 @@ public sealed partial class D3D11VideoSurfaceRenderer : IVideoSurfaceRenderer
 
     private void RenderFrame()
     {
-        if (!_canPresent || _angle is null || _renderContext is null || _swapChain is null) return;
+        if (_renderSuspended || _angle is null || _renderContext is null) return;
+        if (!_canPresent || _swapChain is null)
+        {
+            ConsumeFrameWithoutPresenting();
+            return;
+        }
 #if DEBUG
         _testBeforeRender?.Invoke(_testGraphicsGeneration);
 #endif
@@ -381,14 +396,31 @@ public sealed partial class D3D11VideoSurfaceRenderer : IVideoSurfaceRenderer
         {
             var delay = wakeTimestamp > 0 ? Stopwatch.GetElapsedTime(wakeTimestamp, presentEnd).TotalMilliseconds : 0;
             Log($"已呈现 {_presentedFrames} 帧，{_currentSize.PhysicalWidth}×{_currentSize.PhysicalHeight}；" +
-                $"{_activeOutput.Format}；本段最大 Render {_maximumRenderMilliseconds:0.00} ms / Present {_maximumPresentMilliseconds:0.00} ms；最近回调至呈现 {delay:0.00} ms。");
+                $"{_activeOutput.Format}；本段最大 Render {_maximumRenderMilliseconds:0.00} ms / Present {_maximumPresentMilliseconds:0.00} ms；最近回调至呈现 {delay:0.00} ms；累计跳过呈现 {_skippedFrames} 帧。");
             _maximumRenderMilliseconds = _maximumPresentMilliseconds = 0;
         }
+    }
+
+    /// <summary>
+    /// 表面未绑定或输出重配期间仍响应 mpv 的渲染请求：帧按正常时序被消费但不绘制、不呈现，
+    /// core 不再等待超时或丢帧，PQ 帧也不会被画到旧的 SDR SwapChain。恢复呈现后由 _forceRedraw 补画当前帧。
+    /// </summary>
+    private void ConsumeFrameWithoutPresenting()
+    {
+        Interlocked.Exchange(ref _frameWakeTimestamp, 0);
+        // 跳过绘制仍可能触发 mpv 的 reconfig/reset 等 GL 调用；后备缓冲可能已释放，使用 parking surface。
+        _angle!.MakeParkingCurrent();
+        if (!_renderContext!.Update()) return;
+        _renderContext.Skip();
+        _renderContext.ReportSwap();
+        _skippedFrames++;
+        _forceRedraw = true;
     }
 
     private void ReleaseGraphics()
     {
         _canPresent = false;
+        _renderSuspended = true;
         Interlocked.Exchange(ref _frameWakeTimestamp, 0);
         // mpv render context 必须在 EGL current 且 core 尚存活时先释放。
         // 即使设备已丢失，也尽力释放其余资源，保留最先发生的异常。
@@ -408,7 +440,9 @@ public sealed partial class D3D11VideoSurfaceRenderer : IVideoSurfaceRenderer
 
     private void OnRenderFailure(Exception exception)
     {
+        // 故障后的渲染上下文/EGL 状态不可信，恢复重建之前完全停止调用 Render API。
         _canPresent = false;
+        _renderSuspended = true;
         QueueRecovery(exception);
     }
 
@@ -427,7 +461,7 @@ public sealed partial class D3D11VideoSurfaceRenderer : IVideoSurfaceRenderer
         try
         {
             if (_disposed || _fatalFailure || _worker is null || _surface is null) return;
-            await _worker.InvokeAsync(() => _canPresent = false).ConfigureAwait(false);
+            await _worker.InvokeAsync(() => { _canPresent = false; _renderSuspended = true; }).ConfigureAwait(false);
             if (_recoveryAttempts++ >= 1)
             {
                 await EnterFatalFailureAsync($"视频渲染恢复后再次失败，请重新打开播放器。{originalFailure.Message}").ConfigureAwait(false);
@@ -492,7 +526,7 @@ public sealed partial class D3D11VideoSurfaceRenderer : IVideoSurfaceRenderer
     {
         Volatile.Write(ref _fatalFailure, true);
         if (_worker is not null)
-            await _worker.InvokeAsync(() => _canPresent = false).ConfigureAwait(false);
+            await _worker.InvokeAsync(() => { _canPresent = false; _renderSuspended = true; }).ConfigureAwait(false);
         try
         {
             if (_session is not null)

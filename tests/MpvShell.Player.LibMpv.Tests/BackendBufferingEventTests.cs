@@ -203,6 +203,59 @@ public sealed class BackendBufferingEventTests
         (await events.ReadNextAsync()).Should().BeNull();
     }
 
+    [Fact]
+    public async Task Eof_should_align_position_with_duration_instead_of_the_last_frame_timestamp()
+    {
+        // mpv 的 time-pos 停在最后一帧（8 秒 30 fps 视频约 7.967 秒），UI 向下取整会停在 00:07。
+        await using var events = new BackendEvents();
+        events.StartMedia();
+        events.Publish(new(MpvEventId.PropertyChange, "duration", 8.0));
+        events.Position(7.967);
+        await events.ReadThroughPositionAsync(7.967);
+
+        events.Publish(new(MpvEventId.EndFile, Value: 0));
+        events.Publish(new(MpvEventId.PropertyChange, "volume", 55.0));
+        var ended = await events.ReadUntilAsync(item => item is PlaybackStateChanged { State.Volume: 55 }, "volume 55");
+
+        ended.OfType<EndReached>().Should().ContainSingle();
+        ended.OfType<PlaybackStateChanged>().Should().OnlyContain(item => item.State.PositionSeconds == 8 && !item.State.IsPlaying,
+            "the ended state must report the full duration, and later state updates must keep it");
+    }
+
+    [Fact]
+    public async Task Kept_open_eof_should_align_position_with_duration_and_accept_positions_again_after_seeking_back()
+    {
+        await using var events = new BackendEvents();
+        events.StartMedia();
+        events.Publish(new(MpvEventId.PropertyChange, "pause", false));
+        events.Publish(new(MpvEventId.PropertyChange, "duration", 8.0));
+        events.Position(7.967);
+        await events.ReadThroughPositionAsync(7.967);
+
+        events.Publish(new(MpvEventId.PropertyChange, "eof-reached", true));
+        var ended = await events.ReadThroughPositionAsync(8);
+        ended.OfType<EndReached>().Should().ContainSingle();
+        ended.OfType<PlaybackStateChanged>().Last().State.IsPlaying.Should().BeFalse();
+
+        events.Publish(new(MpvEventId.PropertyChange, "eof-reached", false));
+        events.Position(3);
+        (await events.ReadThroughPositionAsync(3)).OfType<PlaybackStateChanged>().Last().State.IsPlaying.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Eof_without_a_known_duration_should_keep_the_last_reported_position()
+    {
+        await using var events = new BackendEvents();
+        events.StartMedia();
+        events.Position(7.967);
+        await events.ReadThroughPositionAsync(7.967);
+
+        events.Publish(new(MpvEventId.EndFile, Value: 0));
+        var ended = await events.ReadUntilAsync(item => item is PlaybackStateChanged { State.IsPlaying: false }, "the ended state");
+        ended.OfType<EndReached>().Should().ContainSingle();
+        ended.OfType<PlaybackStateChanged>().Last().State.PositionSeconds.Should().Be(7.967);
+    }
+
     private sealed class BackendEvents : IAsyncDisposable
     {
         private readonly CancellationTokenSource _timeout = new(TimeSpan.FromSeconds(10));
@@ -224,15 +277,19 @@ public sealed class BackendBufferingEventTests
 
         internal async Task<PlayerEvent?> ReadNextAsync() => await _reader.MoveNextAsync() ? _reader.Current : null;
 
-        internal async Task<List<PlayerEvent>> ReadThroughPositionAsync(double position)
+        internal Task<List<PlayerEvent>> ReadThroughPositionAsync(double position) =>
+            ReadUntilAsync(item => item is PlaybackStateChanged state && state.State.PositionSeconds == position,
+                $"position {position}");
+
+        internal async Task<List<PlayerEvent>> ReadUntilAsync(Func<PlayerEvent, bool> predicate, string description)
         {
             var result = new List<PlayerEvent>();
             while (await ReadNextAsync() is { } item)
             {
                 result.Add(item);
-                if (item is PlaybackStateChanged state && state.State.PositionSeconds == position) return result;
+                if (predicate(item)) return result;
             }
-            throw new InvalidOperationException($"The event stream ended before position {position}.");
+            throw new InvalidOperationException($"The event stream ended before {description}.");
         }
 
         public async ValueTask DisposeAsync()

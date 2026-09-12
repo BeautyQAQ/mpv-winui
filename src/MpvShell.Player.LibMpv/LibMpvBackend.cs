@@ -279,6 +279,10 @@ public sealed class LibMpvBackend : IPlayerBackend
     {
         if (_ended) return;
         _ended = true;
+        // mpv 的 time-pos 停在最后一帧的时间戳（8 秒视频约 7.97 秒），UI 向下取整会显示 00:07 / 00:08。
+        // 播放已经到达结尾，进度按时长对齐；下一次加载由 StartFile 重置为 0。
+        if (_state.DurationSeconds > 0)
+            _state = _state with { PositionSeconds = _state.DurationSeconds };
         PublishBuffering(false);
         Trace.WriteLine("[libmpv] 播放结束 EOF。");
         Publish(new EndReached());

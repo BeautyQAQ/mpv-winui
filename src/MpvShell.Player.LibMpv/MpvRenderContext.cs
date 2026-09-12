@@ -94,6 +94,22 @@ public sealed class MpvRenderContext : IDisposable
         }
     }
 
+    /// <summary>
+    /// 不绘制但按 mpv 的约定消费当前帧。呈现被暂停期间仍必须调用，否则 core 的 flip_page
+    /// 会等待 200 ms 超时并把该帧记为 VO 丢帧。调用后仍需 <see cref="ReportSwap"/> 保持计数一致。
+    /// </summary>
+    public unsafe void Skip()
+    {
+        EnsureThread();
+        var skip = 1;
+        var blockForTargetTime = 0;
+        var parameters = stackalloc MpvRenderParameter[3];
+        parameters[0] = new() { Type = 13, Data = (nint)(&skip) }; // MPV_RENDER_PARAM_SKIP_RENDERING
+        parameters[1] = new() { Type = 12, Data = (nint)(&blockForTargetTime) };
+        parameters[2] = default;
+        MpvNative.Check(MpvNative.RenderContextRender(_context, (nint)parameters), "跳过视频帧渲染");
+    }
+
     public void ReportSwap()
     {
         EnsureThread();

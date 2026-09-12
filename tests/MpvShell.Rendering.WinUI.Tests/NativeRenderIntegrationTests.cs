@@ -180,7 +180,7 @@ public sealed class NativeRenderIntegrationTests
         pixels.Bottom.Red.Should().BeLessThan(70);
     }
 
-    private static void WriteColorVideo(string path, bool whiteAndBlack = false)
+    internal static void WriteColorVideo(string path, bool whiteAndBlack = false)
     {
         const int size = 64;
         using var output = File.Create(path);

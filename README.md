@@ -8,6 +8,8 @@ SDR 播放 MVP 已完成，支持本地媒体文件、HTTP/HTTPS 直链，提供
 
 2026-09-11 本轮 Debug、Release 全量构建均无警告/错误，各通过 138/138 测试。GTX 1060 实测 HEVC Main10 4K 的 D3D11VA 硬解和 AV1 软件回退，真实 GPU 像素测试通过 10-bit 精度、PQ 输出及 SDR 色调映射。显示器 HDR 视觉效果、跨屏与长时间性能仍待验收。
 
+2026-09-12 根据 RTX 3070 日志修复 HDR 输出切换期间的渲染等待（不能呈现时仍以跳过绘制响应 mpv）和 EOF 时进度停在最后一帧时间戳的问题；Debug、Release 均 0 警告/错误，各通过 186 项测试、3 项需要真实 4K 样片的测试按环境变量跳过。LG TS 跳转后的 HEVC 参考帧错误待对照复测，详见 [HDR/4K 记录](docs/implementation/hdr-4k-progress.md)。
+
 ## 构建与运行
 
 需要 Windows x64、.NET 10 SDK 及 Windows App SDK 构建环境。原生 DLL 已固定版本和 SHA-256，随应用输出复制。
