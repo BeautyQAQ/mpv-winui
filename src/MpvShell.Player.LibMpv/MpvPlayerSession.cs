@@ -310,8 +310,11 @@ public sealed partial class MpvPlayerSession : IMpvPlayerSession
             ["target-prim"] = "bt.709", ["target-trc"] = "srgb", ["target-peak"] = "203",
             ["tone-mapping"] = "mobius", ["hdr-compute-peak"] = "no",
             ["network-timeout"] = "10", ["video-timing-offset"] = "0",
-            // MPEG-TS demux seek 可能落在目标之后；预留解码区间，保证重建后的 exact seek
-            // 能重新解码原暂停帧。固定配置避免命令回复早于 seek 执行时恢复临时选项的竞态。
+            // MPEG-TS 等无关键帧索引的容器，底层 seek 落在 GOP 中间。锁定 libmpv 的
+            // mpv-demux-seek-skip-to-keyframe 补丁让视频流从落点之后的第一个关键帧起读，
+            // 解码器不再收到无法参考的前导帧；demuxer offset 预留一个 GOP 的回退窗口，
+            // 使该关键帧落在目标之前，hr-seek 仍能精确到达目标帧（含恢复重建后的原暂停帧）。
+            ["demuxer-skip-to-keyframe"] = "yes",
             ["hr-seek-demuxer-offset"] = "1",
         };
         if (_testOptions is not null)

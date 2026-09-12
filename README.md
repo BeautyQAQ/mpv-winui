@@ -12,6 +12,8 @@ SDR 播放 MVP 已完成，支持本地媒体文件、HTTP/HTTPS 直链，提供
 
 2026-09-12 下午完成 Phase 0 收尾（P0-11）：补齐 HLS 集成测试关闭 Gate A 缺口；移除旧路线项目 `MpvShell.Player.MpvSidecar`、`MpvShell.Interop.VideoHost` 及其测试，解决方案只含目标 4+4 项目；Debug、Release 各 184 项测试通过、4 项需显式素材的测试按环境跳过；Release 自包含发布烟雾与产物运行通过。Phase 0 在已声明范围内通过，未验证项（双显示器、长时间稳定性、真实触屏、100%/125%/200% DPI）见 [Phase 0 验收记录](docs/implementation/evidence/P0-11-01-phase-0-acceptance.md)。
 
+2026-09-12 下午修复 MPEG-TS 跳转后的 HEVC 参考帧错误：锁定 libmpv 加入 `mpv-demux-seek-skip-to-keyframe.patch`，底层 seek 后视频流从第一个关键帧起读，配合 `hr-seek-demuxer-offset=1` 仍精确到达目标帧。同一 LG 4K60 TS、同一 17 个目标，错误组 430 → 0，落点偏差不超过 11 ms；关闭该选项的对照变体仍为 430。新 `libmpv-2.dll` SHA-256 `5E9D2D0D…`，依赖闭包不变；Debug、Release 各 184 项测试通过。详见 [TS 跳转优化记录](docs/implementation/evidence/ts-seek-keyframe-2026-09-12.md)。
+
 ## 构建与运行
 
 需要 Windows x64、.NET 10 SDK 及 Windows App SDK 构建环境。原生 DLL 已固定版本和 SHA-256，随应用输出复制。

@@ -135,6 +135,9 @@ Apply-LockedPatch $source `
 Apply-LockedPatch $source `
     (Join-Path $PSScriptRoot 'patches\mpv-angle-device-query-extension.patch') `
     'mpv ANGLE client device query 扩展兼容'
+Apply-LockedPatch $source `
+    (Join-Path $PSScriptRoot 'patches\mpv-demux-seek-skip-to-keyframe.patch') `
+    'mpv 底层 seek 后视频流从关键帧起读'
 
 $subprojects = Join-Path $source 'subprojects'
 New-Item -ItemType Directory -Force -Path $subprojects | Out-Null

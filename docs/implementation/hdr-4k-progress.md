@@ -56,6 +56,10 @@ HDR 目标峰值取系统报告值；缺失时采用明确标记的 1000 nit 默
 
 Gate D 结论：在「单显示器、短时段、用户目视」范围内通过。跨屏与长时间稳定性按用户决定不在本阶段验证。
 
+## TS 跳转优化（2026-09-12 下午）
+
+上午定性为 MPEG-TS 随机访问行为的跳转错误，下午在 demuxer 层修复：mpv 0.41 只在缓存内 seek 找不到目标包时才等到关键帧，对新鲜的 demuxer seek 会把 GOP 中间的非关键帧直接交给解码器。锁定 libmpv 新增 `mpv-demux-seek-skip-to-keyframe.patch`（`--demuxer-skip-to-keyframe`），应用固定开启并保留 `hr-seek-demuxer-offset=1` 作为回退窗口。同一 LG TS、同一 17 个目标：产品配置错误组 430 → 0，落点偏差不超过 11 ms，延迟中位数 +14 ms；关闭该选项的对照变体仍为 430。合成开放 GOP 样片（`build/testing/prepare-ts-seek-media.ps1`）88 → 0。应用内暂停恢复位置与像素不变。新 `libmpv-2.dll` SHA-256 `5E9D2D0D…`，闭包与导入不变。详见 [`evidence/ts-seek-keyframe-2026-09-12.md`](evidence/ts-seek-keyframe-2026-09-12.md)；RTX 3070 观感待复测。
+
 ## 本轮自动化结果
 
 最终 Debug、Release 构建均为 0 警告、0 错误，各通过 **138/138** 测试，无跳过：App 36、LibMpv 43、Rendering 51、Abstractions 2、旧项目 6。已显式提供三份素材路径，因此 HEVC、AV1 与 HDR 梯度测试实际执行；日常不设置素材环境变量时，这三项由 xUnit 明确报告跳过。

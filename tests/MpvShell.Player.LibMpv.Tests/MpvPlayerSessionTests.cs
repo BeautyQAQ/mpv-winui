@@ -14,6 +14,8 @@ public sealed class MpvPlayerSessionTests
         (await session.GetPropertyAsync("options/hwdec", CancellationToken.None)).Should().BeEquivalentTo(new[] { "d3d11va" });
         (await session.GetPropertyAsync("options/gpu-hwdec-interop", CancellationToken.None)).Should().Be("d3d11-egl");
         Convert.ToDouble(await session.GetPropertyAsync("options/hr-seek-demuxer-offset", CancellationToken.None)).Should().Be(1);
+        // 锁定 libmpv 补丁提供的选项：底层 seek 后视频流从第一个关键帧起读。
+        (await session.GetPropertyAsync("options/demuxer-skip-to-keyframe", CancellationToken.None)).Should().Be(true);
         await session.ConfigureVideoOutputAsync(MpvVideoOutputMode.Hdr10, 1500, CancellationToken.None);
         (await session.GetPropertyAsync("options/target-trc", CancellationToken.None)).Should().Be("pq");
         (await session.GetPropertyAsync("options/target-prim", CancellationToken.None)).Should().Be("bt.2020");

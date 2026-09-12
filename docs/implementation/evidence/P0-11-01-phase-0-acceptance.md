@@ -55,10 +55,10 @@
 
 - 已验证：NVIDIA GTX 1060（SDR、软解/硬解、150% DPI）；NVIDIA RTX 3070 + 未认证 HDR 4K 120 Hz 显示器（HDR 开/关、4K60 硬解、150% DPI）。
 - 未验证（用户决定跳过或缺少硬件）：双显示器/跨屏、长时间稳定性（>2 分钟连续）、真实触屏、100%/125%/200% DPI、Intel/AMD GPU、HDR 亮度与色彩的仪器测量、HLG 与 Dolby Vision 素材。
-- 已知行为：MPEG-TS 无索引流精确 seek 后会出现一批 HEVC 参考帧跳过日志（TS 随机访问行为，与解码路径无关）；MP4 不受影响。
+- 已知行为（2026-09-12 下午已修复）：MPEG-TS 无索引流精确 seek 后曾出现一批 HEVC 参考帧跳过日志；锁定 libmpv 加入 `mpv-demux-seek-skip-to-keyframe.patch` 后，同一文件同一目标 430 组错误降为 0，见 `evidence/ts-seek-keyframe-2026-09-12.md`。
 
 ## Phase 1 输入
 
 - 「最近打开」仅保存在进程内；HLS 自适应码率、字幕渲染、播放列表等产品功能未在 Phase 0 范围。
-- 若要改善 TS 跳转体验，方向是让 seek 落到关键帧（放弃 exact seek 或对 TS 使用 `hr-seek=no`），不动解码路径。
+- TS 跳转体验已通过 demuxer 层关键帧起读修复，未动解码路径与 exact seek；RTX 3070 观感待复测。
 - 建议在 Phase 1 早期补触屏与 100%/200% DPI 的一次人工矩阵。

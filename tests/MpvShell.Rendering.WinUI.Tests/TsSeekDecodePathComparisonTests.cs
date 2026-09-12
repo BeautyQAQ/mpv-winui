@@ -9,9 +9,12 @@ namespace MpvShell.Rendering.WinUI.Tests;
 
 /// <summary>
 /// RTX 3070 日志中的 LG TS 样片每次跳转后都出现 HEVC “Could not find ref with POC” 错误组。
-/// 本测试按分析报告要求的最小复测：同一文件、同一组目标时间，比较不跳转顺播、D3D11VA 硬解与软件解码，
-/// 并把每次跳转的错误组数写入报告，用于判断这是 TS 随机访问问题还是解码路径问题。
-/// 设置 MPVSHELL_TEST_TS_MEDIA 指向 TS 文件后运行；目标时间可用 MPVSHELL_TEST_TS_SEEK_TARGETS 覆盖。
+/// 根因：libavformat 的 MPEG-TS 没有关键帧索引，底层 seek 落在 GOP 中间，而 mpv 对新鲜的 demuxer seek
+/// 不会等到关键帧再把包交给解码器。锁定 libmpv 的 mpv-demux-seek-skip-to-keyframe 补丁提供
+/// demuxer-skip-to-keyframe 选项修正此问题。本测试用同一文件、同一组目标时间对照：产品配置（硬解 / 软解，
+/// 关键帧起读）必须 0 错误且精确落点；关闭该选项的变体保留为改动前的对照；顺播阶段任何变体都不应有错误。
+/// 设置 MPVSHELL_TEST_TS_MEDIA 指向 TS 文件后运行（合成样片见 build/testing/prepare-ts-seek-media.ps1）；
+/// 目标时间可用 MPVSHELL_TEST_TS_SEEK_TARGETS 覆盖，顺播秒数可用 MPVSHELL_TEST_TS_SEQUENTIAL_SECONDS 覆盖。
 /// </summary>
 [Collection("HardwareMedia")]
 public sealed class TsSeekDecodePathComparisonTests
@@ -32,11 +35,15 @@ public sealed class TsSeekDecodePathComparisonTests
         Directory.CreateDirectory(reportDirectory);
 
         var report = new ComparisonReport { MediaFile = Path.GetFileName(path), SeekTargets = targets, SequentialSeconds = sequentialSeconds };
-        var variants = new (string Decoder, string DemuxerOffset)[] { ("d3d11va", "1"), ("no", "1"), ("d3d11va", "0") };
+        // 前两项是产品配置（硬解 / 软解），第三项关闭关键帧起读作为改动前的对照，第四项关闭 demuxer 回退窗口。
+        var variants = new (string Decoder, string DemuxerOffset, string SkipToKeyframe)[]
+        {
+            ("d3d11va", "1", "yes"), ("no", "1", "yes"), ("d3d11va", "1", "no"), ("d3d11va", "0", "yes"),
+        };
         try
         {
-            foreach (var (decoder, offset) in variants)
-                report.Variants.Add(await RunVariantAsync(path, decoder, offset, targets, sequentialSeconds));
+            foreach (var (decoder, offset, skip) in variants)
+                report.Variants.Add(await RunVariantAsync(path, decoder, offset, skip, targets, sequentialSeconds));
         }
         finally
         {
@@ -46,18 +53,27 @@ public sealed class TsSeekDecodePathComparisonTests
 
         var hardware = report.Variants[0];
         var software = report.Variants[1];
+        var legacy = report.Variants[2];
         hardware.ActualDecoder.Should().Be("d3d11va", "对照的前提是硬解实际生效");
         software.ActualDecoder.Should().Be("no");
         foreach (var variant in report.Variants)
             variant.SequentialErrorGroups.Should().Be(0, $"{variant.Decoder} 顺播阶段不应出现参考帧错误");
         (software.TotalSeekErrorGroups > 0).Should().Be(hardware.TotalSeekErrorGroups > 0,
             "若错误只在某一种解码路径出现，才能归因为解码路径问题");
+        // 产品配置：视频流从关键帧起读，跳转后不应再有任何参考帧错误，且精确 seek 仍落在目标附近。
+        hardware.TotalSeekErrorGroups.Should().Be(0, "关键帧起读后解码器不应收到无法参考的前导帧");
+        software.TotalSeekErrorGroups.Should().Be(0);
+        foreach (var seek in hardware.Seeks)
+            seek.RestartPositionSeconds.Should().BeApproximately(seek.Target, 0.1,
+                "demuxer 回退窗口应让目标之前存在关键帧，hr-seek 精确到达目标");
+        if (legacy.TotalSeekErrorGroups == 0)
+            Trace.WriteLine("[TS seek] 对照变体也没有错误：该样片的 demuxer 落点本身就在关键帧上，无法证明补丁生效。");
     }
 
     private static async Task<VariantResult> RunVariantAsync(string path, string decoder, string demuxerOffset,
-        double[] targets, double sequentialSeconds)
+        string skipToKeyframe, double[] targets, double sequentialSeconds)
     {
-        var result = new VariantResult { Decoder = decoder, HrSeekDemuxerOffset = demuxerOffset };
+        var result = new VariantResult { Decoder = decoder, HrSeekDemuxerOffset = demuxerOffset, SkipToKeyframe = skipToKeyframe };
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(180));
         using var counter = new HevcLogCounter();
         Trace.Listeners.Add(counter);
@@ -66,6 +82,7 @@ public sealed class TsSeekDecodePathComparisonTests
             await using var session = new MpvPlayerSession(new Dictionary<string, string>
             {
                 ["ao"] = "null", ["hwdec"] = decoder, ["hr-seek-demuxer-offset"] = demuxerOffset,
+                ["demuxer-skip-to-keyframe"] = skipToKeyframe,
             }, "v");
             await using var backend = new LibMpvBackend(session);
             await backend.InitializeAsync(cancellation.Token);
@@ -174,6 +191,7 @@ public sealed class TsSeekDecodePathComparisonTests
     {
         public required string Decoder { get; init; }
         public required string HrSeekDemuxerOffset { get; init; }
+        public required string SkipToKeyframe { get; init; }
         public string ActualDecoder { get; set; } = "";
         public int SequentialErrorGroups { get; set; }
         public long FrameDropCount { get; set; }

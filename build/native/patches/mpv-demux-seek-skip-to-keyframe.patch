@@ -1,0 +1,81 @@
+diff --git a/demux/demux.h b/demux/demux.h
+--- a/demux/demux.h
++++ b/demux/demux.h
+@@ -79,6 +79,7 @@ struct demux_opts {
+     double mf_fps;
+     char *mf_type;
+     bool create_ccs;
+     char *record_file;
++    bool seek_skip_to_keyframe;
+     int video_back_preroll;
+     int audio_back_preroll;
+diff --git a/demux/demux.c b/demux/demux.c
+--- a/demux/demux.c
++++ b/demux/demux.c
+@@ -110,7 +110,8 @@ const struct m_sub_options demux_conf = {
+         {"mf-fps", OPT_DOUBLE(mf_fps)},
+         {"mf-type", OPT_STRING(mf_type)},
+         {"sub-create-cc-track", OPT_BOOL(create_ccs)},
+         {"stream-record", OPT_STRING(record_file)},
++        {"demuxer-skip-to-keyframe", OPT_BOOL(seek_skip_to_keyframe)},
+         {"video-backward-overlap", OPT_CHOICE(video_back_preroll, {"auto", -1}),
+             M_RANGE(0, 1024)},
+         {"audio-backward-overlap", OPT_CHOICE(audio_back_preroll, {"auto", -1}),
+@@ -391,7 +392,9 @@ struct demux_stream {
+     size_t last_br_bytes;   // summed packet sizes since last bitrate calculation
+     double bitrate;
+     struct demux_packet *reader_head;   // points at current decoder position
+     bool skip_to_keyframe;
++    bool seen_keyframe;     // stream produced at least one keyframe packet
++    int skip_to_keyframe_budget; // >0: stop skipping after this many packets
+     bool attached_picture_added;
+     bool need_wakeup;       // call wakeup_cb on next reader_head state change
+     double force_read_until;// eager=false streams (subs): force read-ahead
+@@ -811,6 +814,7 @@ static void ds_clear_reader_state(struct demux_stream *ds,
+     ds->last_br_bytes = 0;
+     ds->bitrate = -1;
+     ds->skip_to_keyframe = false;
++    ds->skip_to_keyframe_budget = 0;
+     ds->attached_picture_added = false;
+     ds->last_ret_pos = -1;
+     ds->last_ret_dts = MP_NOPTS_VALUE;
+@@ -2065,6 +2069,15 @@ static void add_packet_locked(struct sh_stream *stream, demux_packet_t *dp)
+
+     // (keep in mind that even if the reader went out of data, the queue is not
+     // necessarily empty due to the backbuffer)
++    if (dp->keyframe)
++        ds->seen_keyframe = true;
++    if (!ds->reader_head && ds->skip_to_keyframe && !dp->keyframe &&
++        ds->skip_to_keyframe_budget > 0 && --ds->skip_to_keyframe_budget == 0)
++    {
++        MP_WARN(in, "stream %d: no keyframe found after seek, starting on a "
++                "non-keyframe packet\n", ds->index);
++        ds->skip_to_keyframe = false;
++    }
+     if (!ds->reader_head && (!ds->skip_to_keyframe || dp->keyframe)) {
+         ds->reader_head = dp;
+         ds->skip_to_keyframe = false;
+@@ -3864,6 +3877,23 @@ static bool queue_seek(struct demux_internal *in, double seek_pts, int flags,
+     } else {
+         switch_to_fresh_cache_range(in);
+
++        // Demuxers without a keyframe index (e.g. libavformat MPEG-TS) may
++        // position the stream in the middle of a GOP. Starting the reader at
++        // the first keyframe keeps undecodable leading frames away from the
++        // decoder, the same way execute_cache_seek() does when the cache has
++        // no packet for the target.
++        if (in->d_user->opts->seek_skip_to_keyframe && !set_backwards) {
++            for (int n = 0; n < in->num_streams; n++) {
++                struct demux_stream *ds = in->streams[n]->ds;
++                if (ds->type == STREAM_VIDEO && ds->selected && ds->seen_keyframe) {
++                    ds->skip_to_keyframe = true;
++                    ds->skip_to_keyframe_budget = 4096;
++                    MP_VERBOSE(in, "stream %d: start at next keyframe after seek\n",
++                               ds->index);
++                }
++            }
++        }
++
+         in->seeking = true;
+         in->seek_flags = flags;
+         in->seek_pts = seek_pts;

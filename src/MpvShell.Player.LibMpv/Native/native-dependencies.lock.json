@@ -11,8 +11,10 @@
       "component": "mpv",
       "group": "mpv",
       "loadOrder": 100,
-      "logicalNames": [ "mpv" ],
-      "sha256": "932D70710EECAA1D686D1E49674AE9A13C555E6C4701695858B5163A8C5DFAAB"
+      "logicalNames": [
+        "mpv"
+      ],
+      "sha256": "5E9D2D0DDED0A30D6B41AEB324D5200F84696BC7D9039B460DD680FC2804C705"
     },
     {
       "fileName": "d3dcompiler_47.dll",
@@ -27,7 +29,9 @@
       "component": "ANGLE",
       "group": "angle",
       "loadOrder": 100,
-      "logicalNames": [ "GLESv2" ],
+      "logicalNames": [
+        "GLESv2"
+      ],
       "sha256": "55ECF05D47B4CCFCF91B4F5FE0F21ED3FCE2584B6CC54E4F6855A65142F32D3C"
     },
     {
@@ -35,7 +39,9 @@
       "component": "ANGLE",
       "group": "angle",
       "loadOrder": 110,
-      "logicalNames": [ "EGL" ],
+      "logicalNames": [
+        "EGL"
+      ],
       "sha256": "8B912D254D5FC8755840B6FD1E404F36E466521FD63F68255528CD7F101909D7"
     }
   ]
