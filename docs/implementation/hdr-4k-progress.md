@@ -58,7 +58,7 @@ Gate D 结论：在「单显示器、短时段、用户目视」范围内通过�
 
 ## TS 跳转优化（2026-09-12 下午）
 
-上午定性为 MPEG-TS 随机访问行为的跳转错误，下午在 demuxer 层修复：mpv 0.41 只在缓存内 seek 找不到目标包时才等到关键帧，对新鲜的 demuxer seek 会把 GOP 中间的非关键帧直接交给解码器。锁定 libmpv 新增 `mpv-demux-seek-skip-to-keyframe.patch`（`--demuxer-skip-to-keyframe`），应用固定开启并保留 `hr-seek-demuxer-offset=1` 作为回退窗口。同一 LG TS、同一 17 个目标：产品配置错误组 430 → 0，落点偏差不超过 11 ms，延迟中位数 +14 ms；关闭该选项的对照变体仍为 430。合成开放 GOP 样片（`build/testing/prepare-ts-seek-media.ps1`）88 → 0。应用内暂停恢复位置与像素不变。新 `libmpv-2.dll` SHA-256 `5E9D2D0D…`，闭包与导入不变。详见 [`evidence/ts-seek-keyframe-2026-09-12.md`](evidence/ts-seek-keyframe-2026-09-12.md)；RTX 3070 观感待复测。
+上午定性为 MPEG-TS 随机访问行为的跳转错误，下午在 demuxer 层修复：mpv 0.41 只在缓存内 seek 找不到目标包时才等到关键帧，对新鲜的 demuxer seek 会把 GOP 中间的非关键帧直接交给解码器。锁定 libmpv 新增 `mpv-demux-seek-skip-to-keyframe.patch`（`--demuxer-skip-to-keyframe`），应用固定开启并保留 `hr-seek-demuxer-offset=1` 作为回退窗口。同一 LG TS、同一 17 个目标：产品配置错误组 430 → 0，落点偏差不超过 11 ms，延迟中位数 +14 ms；关闭该选项的对照变体仍为 430。合成开放 GOP 样片（`build/testing/prepare-ts-seek-media.ps1`）88 → 0。应用内暂停恢复位置与像素不变。新 `libmpv-2.dll` SHA-256 `5E9D2D0D…`，闭包与导入不变。详见 [`evidence/ts-seek-keyframe-2026-09-12.md`](evidence/ts-seek-keyframe-2026-09-12.md)；RTX 3070 第四轮复测通过：24 次跳转 0 错误、呈现丢帧 0、落点 ≤ 12 ms，用户目视无卡顿。
 
 ## 本轮自动化结果
 
