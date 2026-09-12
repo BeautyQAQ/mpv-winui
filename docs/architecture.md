@@ -4,6 +4,8 @@
 > 版本：1.1
 > 更新日期：2026-08-27
 
+> 实施状态（2026-09-12 回填）：Phase 0 已在声明范围内通过；当前执行 [Phase 1 计划](implementation/phase-1-plan.md)，状态与未覆盖范围见 [Phase 1 进度](implementation/phase-1-progress.md)。第 14～15 节保留原阶段范围与验收要求，实际范围裁定见 [P0-11 验收](implementation/evidence/P0-11-01-phase-0-acceptance.md)。
+
 ## 1. 决策摘要
 
 MpvShell 是仅面向 Windows 的 WinUI 3 播放器。项目使用 mpv 提供解复用、解码、字幕、音轨和高质量视频渲染能力，由应用自己提供现代化的触屏、键鼠、OSD 和信息界面。
@@ -597,13 +599,17 @@ Phase 0 全部通过前，不继续堆叠完整产品 UI。
 - x64 优先。
 - Phase 0 先验证渲染和 HDR，再开发完整产品功能。
 
-### 由 Phase 0 实测决定
+### Phase 0 实测结论（2026-09-12 回填）
 
-- HDR 最终采用 PQ 10-bit 还是 scRGB 16-bit float SwapChain。
-- 硬件解码默认配置。
-- 是否需要极薄的 C++/WinRT 图形桥接层。
+- HDR 采用 PQ 10-bit / BT.2020 SwapChain；Windows HDR 关闭时进行 SDR 色调映射。FP16 存储测试不代表已经实现 scRGB 输出。
+- 默认优先 D3D11VA，经 d3d11-egl 传递 GPU 帧，不可用时回退软件解码。
+- 当前 C# 与 Vortice 已表达所需 COM 和资源所有权，不增加 C++/WinRT 桥接层。
+- 依据见 [Phase 0 技术决策与验收](implementation/phase-0-progress.md)，硬件结论限于已声明的机器与显示场景。
+
+### 后续待定
+
 - 最终支持的最低 Windows 版本和驱动范围。
-- 是否以及何时增加 ARM64。
+- 是否以及何时增加 ARM64；不纳入当前 Phase 1 或首个 V1 的 x64 范围。
 
 ## 18. 参考资料
 

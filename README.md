@@ -2,17 +2,13 @@
 
 Windows x64 的 WinUI 3 播放器，使用进程内 libmpv 和 ANGLE/D3D11，把视频直接渲染到 `SwapChainPanel`。
 
-SDR 播放 MVP 已完成，支持本地媒体文件、HTTP/HTTPS 直链，提供播放/暂停、进度跳转、音量/静音、轨道、媒体信息和全屏。2026-09-11 已恢复 HDR/4K 硬解实施：根据片源与 Windows HDR 状态切换 PQ 10-bit 输出或 SDR 色调映射，并显示实际解码路径。HDR 显示器的视觉效果与跨屏行为仍待人工验收，详见 [HDR/4K 记录](docs/implementation/hdr-4k-progress.md)。
+**当前阶段：Phase 0 已在声明范围内通过，Phase 1 工作包已建立。** Phase 1 聚焦生产级播放基础：固定回归、状态与错误契约、生命周期、视频 HLS/字幕验收和发布流程。当前工作包与下一步以 [Phase 1 进度](docs/implementation/phase-1-progress.md) 为准，范围与完成标准见 [Phase 1 计划](docs/implementation/phase-1-plan.md)。
 
-2026-09-10 已完成 Debug、Release 全量构建，均为 0 警告、0 错误，各通过 95/95 测试。GUI 已实测本地文件选择、正向视频、时间轴、暂停、信息/音轨、音量/静音、全屏及正常关闭；本机 HTTP 视频播放到 EOF，404 错误显示后可从最近列表恢复播放。真实 GPU 测试通过上下色块方向、连续 resize 及同一 mpv core 的渲染上下文重建。
+已支持本地文件、HTTP/HTTPS 直链、基础 HLS、播放/暂停、精确跳转、音量/静音、轨道选择、媒体信息和全屏。视频根据片源与 Windows HDR 状态使用 PQ 10-bit 输出或 SDR 色调映射；优先 D3D11VA，经 ANGLE 直接传递 GPU 帧，不可用时回退软件解码。
 
-2026-09-11 本轮 Debug、Release 全量构建均无警告/错误，各通过 138/138 测试。GTX 1060 实测 HEVC Main10 4K 的 D3D11VA 硬解和 AV1 软件回退，真实 GPU 像素测试通过 10-bit 精度、PQ 输出及 SDR 色调映射。显示器 HDR 视觉效果、跨屏与长时间性能仍待验收。
+2026-09-12 的 RTX 3070 验收记录确认：PerMonitorV2 下全屏表面为 3840×2160，4K60 HDR TS 稳态约 59.94 fps；HDR 开关切换、EOF 信息保留与正常关闭通过。TS 跳转的关键帧起读补丁也已通过外机复测。结论限于单显示器、150% DPI、短时段和用户目视，详见 [Phase 0 验收](docs/implementation/evidence/P0-11-01-phase-0-acceptance.md) 与 [TS 修复证据](docs/implementation/evidence/ts-seek-keyframe-2026-09-12.md)。
 
-2026-09-12 根据 RTX 3070 日志修复 HDR 输出切换期间的渲染等待（不能呈现时仍以跳过绘制响应 mpv）和 EOF 时进度停在最后一帧时间戳的问题，并在 RTX 3070 上复测通过。第二轮复测发现应用此前运行在 DPI 不感知模式（4K 150% 屏上视频表面只有 2560×1440），已加入 PerMonitorV2 清单并改读 XamlRoot 缩放；EOF 后信息面板不再清空。第三轮复测证实全屏表面达到 3840×2160，LG 4K60 HDR TS 在 PQ 输出下稳定 59.94 fps、稳态 Render 不超过 11 ms。LG TS 跳转后的 HEVC 参考帧错误经硬解/软解/顺播对照确认为 MPEG-TS 随机访问行为，不改解码路径。Gate D 在单显示器、短时段、用户目视范围内通过；跨屏与长时间稳定性按用户决定不在本阶段验证。Debug、Release 均 0 警告/错误，各通过 187 项测试、4 项需要真实样片的测试按环境变量跳过。详见 [HDR/4K 记录](docs/implementation/hdr-4k-progress.md)。
-
-2026-09-12 下午完成 Phase 0 收尾（P0-11）：补齐 HLS 集成测试关闭 Gate A 缺口；移除旧路线项目 `MpvShell.Player.MpvSidecar`、`MpvShell.Interop.VideoHost` 及其测试，解决方案只含目标 4+4 项目；Debug、Release 各 184 项测试通过、4 项需显式素材的测试按环境跳过；Release 自包含发布烟雾与产物运行通过。Phase 0 在已声明范围内通过，未验证项（双显示器、长时间稳定性、真实触屏、100%/125%/200% DPI）见 [Phase 0 验收记录](docs/implementation/evidence/P0-11-01-phase-0-acceptance.md)。
-
-2026-09-12 下午修复 MPEG-TS 跳转后的 HEVC 参考帧错误：锁定 libmpv 加入 `mpv-demux-seek-skip-to-keyframe.patch`，底层 seek 后视频流从第一个关键帧起读，配合 `hr-seek-demuxer-offset=1` 仍精确到达目标帧。同一 LG 4K60 TS、同一 17 个目标，错误组 430 → 0，落点偏差不超过 11 ms；关闭该选项的对照变体仍为 430。新 `libmpv-2.dll` SHA-256 `5E9D2D0D…`，依赖闭包不变；Debug、Release 各 184 项测试通过。详见 [TS 跳转优化记录](docs/implementation/evidence/ts-seek-keyframe-2026-09-12.md)。
+最近一次源码复核（`f793d0b`，2026-09-12）：Debug/Release 构建均 0 警告、0 错误；Debug 显式提供四项媒体样本后 **188 通过、无跳过**，Release 常规回归 **184 通过、4 项媒体测试跳过**。这些测试证明功能与像素通路，不代表长时间或全场景性能通过，详见 [Phase 1 基线证据](docs/implementation/evidence/P1-00-01-baseline-and-release-entry.md)。
 
 ## 构建与运行
 
@@ -24,35 +20,33 @@ dotnet test mpv-winui.slnx -p:Platform=x64 --no-build --no-restore
 & .\src\MpvShell.App\bin\x64\Debug\net10.0-windows10.0.19041.0\win-x64\MpvShell.App.exe
 ```
 
-在窗口中点击“打开文件”，或输入完整本地路径、HTTP/HTTPS 媒体直链后点击“打开地址”。也可把一个媒体路径作为应用启动参数。
+点击“打开文件”，或输入完整本地路径、HTTP/HTTPS 媒体直链后点击“打开地址”。也可把一个媒体路径作为应用启动参数。
 
 快捷键：空格播放/暂停，左右方向键跳转 5 秒，F11 或双击画面切换全屏，Esc 退出全屏/关闭浮层。时间轴支持点击、拖动及键盘操作。
 
-## 自包含发布包
+## 当前测试包与发布
 
-在仓库根目录使用 PowerShell 7 一键发布并验证：
+**[当前发布包入口](docs/implementation/release-status.md)** 统一登记可用 ZIP、解压目录、启动方法、源码提交、哈希及验证范围。当前登记的是包含 TS 修复的 Release x64 自包含测试包；`artifacts/mvp/`、`artifacts/hdr-4k/win-x64/` 和 `artifacts/phase-0/win-x64/` 是历史产物，不作为最新版本入口。
+
+生成新的独立测试包（PowerShell 7，仓库根目录）：
 
 ```powershell
-.\build\testing\publish-mvp.ps1 -OutputDirectory (Join-Path (Get-Location) artifacts/hdr-4k/win-x64)
-& .\artifacts\hdr-4k\win-x64\MpvShell.App.exe
+pwsh -File build/testing/publish-rtx3070.ps1 -IncludeTestMedia
 ```
 
-最新发布目录为 `artifacts/phase-0/win-x64`（2026-09-12，旧路线已移除）；此前 `artifacts/hdr-4k/win-x64` 包含 .NET、WinUI 运行时及第三方许可证，应整体复制，不能只复制 EXE。脚本校验四个原生 DLL 的 SHA-256、x64 架构和加载，并执行三次 libmpv 会话创建/销毁，将结果写入目录内的 `publish-verification.json`。本轮发布与 35 份许可证原文哈希校验已通过。2026-09-10 的 SDR MVP 包保留在 `artifacts/mvp/win-x64`，其 GUI 正向播放与暂停已有历史记录。
+脚本在 `artifacts/rtx3070/` 下创建带时间与唯一标识的目录和 ZIP，包含 .NET/WinUI 运行时、许可证、符号及构建清单。`-IncludeTestMedia` 需要已生成并核验的三份 4K 合成样片；不附带样片时省略该参数。生成完成后按发布入口中的核验规则登记，不能仅凭目录时间把新包视为已验收。
+
+完整解压后，直接运行 `MpvShell.App.exe` 使用默认日志；双击 `Start-Debug.cmd` 开启详细日志，测试后关闭应用，在 `Test-Notes.txt` 填写复现步骤，再运行 `Collect-Logs.cmd` 收集日志。包内 `README-测试说明.md` 提供具体操作。底层发布脚本仍为 `build/testing/publish-mvp.ps1`，生成单独目录时应显式传入 `-OutputDirectory`，其历史默认目录不代表当前发布入口。
 
 ## 验证与进度
 
-- [MVP 实施记录](docs/implementation/mvp-progress.md)
-- [HDR/4K 实施与晚间测试](docs/implementation/hdr-4k-progress.md)
-- [Phase 0 进度](docs/implementation/phase-0-progress.md)
+- [Phase 1 工作包与验收标准](docs/implementation/phase-1-plan.md)
+- [Phase 1 当前进度](docs/implementation/phase-1-progress.md)
+- [当前发布包入口](docs/implementation/release-status.md)
+- [Phase 0 进度与验收历史](docs/implementation/phase-0-progress.md)
+- [SDR MVP 历史记录](docs/implementation/mvp-progress.md)
+- [HDR/4K 实施与硬件记录](docs/implementation/hdr-4k-progress.md)
 - [架构与原始验收要求](docs/architecture.md)
-- [本地 HTTP 测试服务](build/testing/README.md)
+- [HTTP 与应用恢复测试工具](build/testing/README.md)
 
-应用诊断日志位于 `%LOCALAPPDATA%\MpvShell\logs`。原生媒体日志对网络地址脱敏；测试素材不随项目提交。
-
-## 另一台电脑的 debug 日志测试包
-
-使用 PowerShell 7 运行 `build/testing/publish-rtx3070.ps1 -IncludeTestMedia`，在 `artifacts/rtx3070/` 生成独立 ZIP。它使用 Release x64 自包含构建，附带调试符号、debug 日志启动器、日志收集器与构建/源码哈希清单。`-IncludeTestMedia` 使用已经生成并通过哈希校验的三份 4K 合成样片；不加此参数时不附带样片。
-
-在测试机上完整解压后双击 `Start-Debug.cmd`。启动器通过 `MPVSHELL_LOG_LEVEL=debug`、`MPVSHELL_LOG_DIRECTORY` 为本次运行开启详细文件日志，默认写入包内 `logs/<运行标识>/`，同时记录 Windows、GPU/驱动和进程退出信息。测试完关闭播放器，在 `Test-Notes.txt` 记录复现步骤，再双击 `Collect-Logs.cmd`，把生成的日志 ZIP 带回开发机。详见包内 `README-测试说明.md`。直接运行 EXE 仍使用默认日志配置。
-
-当前优先使用 D3D11VA，经 ANGLE 直接导入 GPU 解码帧；不可用时回退软件解码，信息面板报告实际结果。Phase 0 已在声明范围内通过；双显示器、长时间稳定性、真实触屏与 100%/125%/200% DPI 尚未验收，“最近打开”仅保存在本次进程内。详见实施记录。
+应用默认诊断日志位于 `%LOCALAPPDATA%\MpvShell\logs`，原生媒体日志对网络地址脱敏，测试素材不随 Git 提交。尚未验收的跨屏、长期稳定性、真实触屏及其他 DPI 等范围见 Phase 1 进度；“最近打开”仅保存在进程内，停止、倍速和交互完善列入后续产品工作。

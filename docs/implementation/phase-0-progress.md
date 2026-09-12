@@ -1,12 +1,13 @@
 # Phase 0 实施进度
 
 > 总体状态：通过（范围内）。Gate A～D 均有可复核证据；未验证项为用户决定跳过或缺少硬件的双显示器、长时间稳定性、真实触屏、100%/125%/200% DPI，见 `evidence/P0-11-01-phase-0-acceptance.md`
-> 当前阶段：Phase 0 已完成（P0-11 于 2026-09-12 收尾）；后续进入 Phase 1 输入整理
+> 当前阶段：Phase 0 已完成（P0-11 于 2026-09-12 收尾）；后续工作统一见 [Phase 1 进度](phase-1-progress.md)与[实施计划](phase-1-plan.md)
+> 发布入口：[发布状态](release-status.md)；本文的历史产物路径仅用于追溯
 > 最后更新：2026-09-12
 > 架构基线：`docs/architecture.md` v1.1  
 > 执行计划：`docs/implementation/phase-0-plan.md`
 
-2026-09-10：应用已接入新后端；通过原生文件选择器打开用户的 result.mp4 后，SwapChainPanel 显示正向视频，先通过时间轴跳转到 19 秒，后续在 44 秒暂停并保持稳定，媒体信息和单音轨列表均已实测。本机 HTTP 视频播放到 EOF，404 错误后可恢复；F11/Esc 全屏切换、音量/静音和正常关闭均已验证。真实 GPU 测试验证上下色块、64→96→128→64 resize 及同一 mpv core 的渲染上下文重建。Debug/Release 全量构建均为 0 警告、0 错误，各通过 95/95 测试。详细记录见 [SDR MVP 实施记录](mvp-progress.md)；HLS、HDR/硬解及完整 DPI/显示器矩阵仍未验收，MVP 进展不能等同于全部 Phase 0 闸口通过。
+历史快照（2026-09-10）：应用已接入新后端；通过原生文件选择器打开用户的 result.mp4 后，SwapChainPanel 显示正向视频，先通过时间轴跳转到 19 秒，后续在 44 秒暂停并保持稳定，媒体信息和单音轨列表均已实测。本机 HTTP 视频播放到 EOF，404 错误后可恢复；F11/Esc 全屏切换、音量/静音和正常关闭均已验证。真实 GPU 测试验证上下色块、64→96→128→64 resize 及同一 mpv core 的渲染上下文重建。Debug/Release 全量构建均为 0 警告、0 错误，各通过 95/95 测试。详细记录见 [SDR MVP 实施记录](mvp-progress.md)。当日 HLS、HDR/硬解及完整 DPI/显示器矩阵尚未验收；后续验收结论以本页闸口状态和 Phase 1 进度为准。
 
 ## 1. 状态说明
 
@@ -23,7 +24,9 @@
 
 ## 2. 初始基线与当前回归
 
-当前回归日期：2026-09-12。SDK 为 .NET 10.0.401，Windows x64；旧路线项目已移除，Debug、Release 全量构建均通过且无警告/错误，两种配置各通过 184 个测试、4 项需显式素材的测试按环境跳过（已单独执行）：App 54、LibMpv 79、Rendering 49+4、Abstractions 2。已实际验证 4K HEVC Main10 的 D3D11VA / EGL / P010 GPU 帧传递、AV1 软件回退和 HDR 梯度像素。完整结果与晚间显示器验收见 [HDR/4K 记录](hdr-4k-progress.md)。原 2026-09-10 SDR MVP 发布与 GUI 记录保留在 `artifacts/mvp/`；本轮使用独立的 `artifacts/hdr-4k/`。
+当前回归日期：2026-09-12，代码基线 `f793d0b`。SDK 为 .NET 10.0.401，Windows x64；旧路线项目已移除，Debug、Release 全量构建均为 0 警告、0 错误。Debug 显式提供四项素材后通过 188 个测试、无跳过；Release 常规回归通过 184 个测试，4 项素材驱动测试按环境跳过：App 54、LibMpv 79、Rendering 53（Debug）或 49 通过 + 4 跳过（Release）、Abstractions 2。命令、素材条件及结果见 [Phase 1 基线复核](evidence/P1-00-01-baseline-and-release-entry.md)。
+
+已实际验证 4K HEVC Main10 的 D3D11VA / EGL / P010 GPU 帧传递、GTX 1060 的 AV1 软件回退、RTX 3070 的 AV1 硬解和 HDR 梯度像素；硬件范围与历史结果见 [HDR/4K 记录](hdr-4k-progress.md)。`artifacts/mvp/`、`artifacts/hdr-4k/` 和 `artifacts/phase-0/` 保存各阶段证据，当前可交付产物统一从[发布状态](release-status.md)查找。
 
 以下为 2026-08-28 初始审计快照（P0-00 当日复核），保留历史状态，不代表当前实现：
 
@@ -67,16 +70,16 @@ dotnet build mpv-winui.slnx -p:Platform=x64 --no-restore
 |---|---|---|---|---|---|---|
 | P0-00 基线与输入确认 | 通过 | Copilot Agent | 2026-08-28 | 2026-08-28 | b2f4ccf |
 | P0-01 目标项目骨架和抽象边界 | 通过 | Codex | 2026-08-28 | 2026-08-28 | `21070a4` | 目标项目、x64 配置和无 HWND 抽象均已验证 |
-| P0-02 原生依赖与确定性加载 | 通过 | Codex | 2026-08-29 | 2026-08-30 | （待提交） | 真实 mpv/ANGLE 构建、四 DLL 闭包、许可证/PE 导入审计、哈希、固定输出加载与 D3D11 EGL 烟雾测试均通过 |
-| P0-03 libmpv C ABI 互操作层 | 通过 | Codex | 2026-09-10 | 2026-09-12 | `d7af8a5` | 已实现固定头文件对应 ABI、UTF-8 和原生参数；MSVC C 布局核验与原生测试通过，待正式工作包验收回填；P0-11 审计回填：ABI 布局/UTF-8/释放顺序测试持续通过 |
+| P0-02 原生依赖与确定性加载 | 通过 | Codex | 2026-08-29 | 2026-08-30 | `a8bcb0d` | 真实 mpv/ANGLE 构建、四 DLL 闭包、许可证/PE 导入审计、哈希、固定输出加载与 D3D11 EGL 烟雾测试均通过 |
+| P0-03 libmpv C ABI 互操作层 | 通过 | Codex | 2026-09-10 | 2026-09-12 | `d7af8a5` | 已实现固定头文件对应 ABI、UTF-8 和原生参数；MSVC C 布局核验与原生测试通过；P0-11 审计回填：ABI 布局/UTF-8/释放顺序测试持续通过 |
 | P0-04 会话生命周期 | 通过 | Codex | 2026-09-10 | 2026-09-12 | `d7af8a5` | 独立事件/命令线程、取消、幂等关闭及 context→core 释放；100 次真实会话循环通过；发布烟雾 3 次会话与外机三轮正常释放 |
 | P0-05 命令、事件和播放控制 | 通过 | Codex | 2026-09-10 | 2026-09-12 | `d7af8a5` | Gate A：本地/HTTP/HLS 控制、暂停、seek、EOF/重播、加载错误恢复、无外部 mpv、日志脱敏均有自动化与人工证据 |
-| P0-06 D3D11 与 SwapChainPanel 基线 | 通过 | Copilot Agent / Codex | 2026-08-28 | 2026-08-29 | （待提交） | 清屏/Present、原生面板绑定、窗口尺寸同步及人工硬件验证均通过；Rendering 18 测试通过 |
+| P0-06 D3D11 与 SwapChainPanel 基线 | 通过 | Copilot Agent / Codex | 2026-08-28 | 2026-08-29 | `ac78d62` | 清屏/Present、原生面板绑定、窗口尺寸同步及人工硬件验证均通过；Rendering 18 测试通过 |
 | P0-07 ANGLE/EGL 与 OpenGL FBO | 通过 | Codex | 2026-09-10 | 2026-09-12 | `d7af8a5` | D3D11 纹理直接导入 EGL pbuffer；真实 GPU 色块、resize 和上下文重建通过；外机日志证实 ANGLE D3D11 后端与 3840×2160 表面 |
 | P0-08 Render API SDR 集成 | 通过 | Codex | 2026-09-10 | 2026-09-12 | `d7af8a5` | Gate B：Render API 视频进入 SwapChainPanel，150% DPI、全屏、28 次尺寸切换、渲染连续性与释放顺序均有证据 |
 | P0-09 覆盖层、输入与生命周期 | 通过（范围内） | Codex | 2026-09-10 | 2026-09-12 | `d7af8a5` | Gate C：鼠标/键盘/全屏/150% DPI/单显示器通过；真实触屏、其他 DPI、双显示器未验证 |
 | P0-10 4K、硬解和 HDR 验证 | 通过（范围内） | Codex | 2026-09-11 | 2026-09-12 | `8eb84fa` | RTX 3070 三轮验收：HDR 开关/切换、硬解、PerMonitorV2 下 4K 表面 59.94 fps、EOF 面板保留、正常退出；跨屏与长时间按用户决定不验证；详见 `hdr-4k-progress.md`、`evidence/P0-10-01`、`P0-10-02` |
-| P0-11 切换、清理与 Phase 0 验收 | 通过 | Claude | 2026-09-12 | 2026-09-12 | 本次提交 | 旧路线项目移除、Debug/Release 184 通过、发布烟雾与产物启动关闭通过；见 `evidence/P0-11-01-phase-0-acceptance.md` |
+| P0-11 切换、清理与 Phase 0 验收 | 通过 | Claude | 2026-09-12 | 2026-09-12 | `c1e4051` | 当次验收：旧路线项目移除、Debug/Release 各 184 通过、4 跳过，发布烟雾与产物启动关闭通过；见 `evidence/P0-11-01-phase-0-acceptance.md` |
 
 ## 4. 闸口状态
 
@@ -85,7 +88,7 @@ dotnet build mpv-winui.slnx -p:Platform=x64 --no-restore
 | Gate A：libmpv 控制 | 通过 | LibMpv 79 测试含真实会话、本地/HTTP/HLS 控制、EOF、取消、错误恢复、无外部 mpv、日志脱敏 | MVP GUI 与 RTX 3070 三轮真实播放、暂停、时间轴 seek、EOF、错误恢复 | 2026-09-12 P0-11 审计通过 |
 | Gate B：SDR Render API | 通过 | Rendering 49 测试含真实 GPU 色块方向、resize、同一 core 重建上下文、渲染连续性、10-bit/FP16 精度、应用内 5 场景恢复 | result.mp4 正向显示；RTX 3070 全屏 3840×2160、4K60 59.94 fps、150% DPI 表面等于物理客户区、28 次尺寸切换 | 2026-09-12 P0-11 审计通过；SDR 色彩无仪器对照 |
 | Gate C：XAML 覆盖与输入 | 通过（范围内） | App 54 测试含 UI 事件派发、浮层保留、seek 竞争、关闭协调、终态命令拒绝 | 鼠标、键盘、时间轴、双击全屏、F11/Esc、150% DPI（两台机器）、单显示器 | 真实触屏、100%/125%/200% DPI、双显示器未验证 |
-| Gate D：4K、硬件解码与 HDR | 通过（范围内） | Debug/Release 各 187 通过、4 项素材驱动测试按环境跳过；真实 HEVC 4K10 硬解、AV1 软件回退、10-bit/FP16 精度、PQ 梯度、渲染连续性通过 | 2026-09-12 RTX 3070 三轮：HDR 开/关与播放中切换、HEVC MP4/TS 硬解、PQ 输出、PerMonitorV2 下 3840×2160 表面 59.94 fps、EOF 面板保留、正常退出；视觉为用户目视；见 `evidence/P0-10-01`、`P0-10-02` | 跨屏与长时间稳定性按用户决定不在本阶段验证；视觉无截图 |
+| Gate D：4K、硬件解码与 HDR | 通过（范围内） | `f793d0b` 复核：Debug 188 通过、无跳过；Release 184 通过、4 项素材驱动测试按环境跳过；真实 HEVC 4K10 硬解、AV1 软件回退、10-bit/FP16 精度、PQ 梯度、渲染连续性通过，见 `evidence/P1-00-01-baseline-and-release-entry.md` | 2026-09-12 RTX 3070：HDR 开/关与播放中切换、HEVC MP4/TS 与 AV1 硬解、PQ 输出、PerMonitorV2 下 3840×2160 表面 59.94 fps、EOF 面板保留、正常退出；第四轮 TS 跳转复测通过；视觉为用户目视；见 `hdr-4k-progress.md` | 跨屏与长时间稳定性按用户决定不在本阶段验证；视觉无截图 |
 
 ## 5. 外部输入与阻塞项
 
@@ -95,13 +98,13 @@ dotnet build mpv-winui.slnx -p:Platform=x64 --no-restore
 | EXT-02 | 与二进制匹配的 `client.h`、`render.h`、`render_gl.h` | 已确认并锁定 | P0-03 前 | Agent（执行） | 同 commit `41f6a645…` 三个头文件 SHA-256 已登记在 `build/native/source-lock.json` 与原生依赖清单 |
 | EXT-03 | ANGLE x64 固定版本、来源、构建参数和许可证 | 已完成 | P0-02/P0-07 | Agent | 固定 Chrome 152 `chromium/7977`；真实构建三 DLL 闭包并登记哈希；EGL 1.5、OpenGL ES 3.0 与 NVIDIA D3D11 后端烟雾测试通过 |
 | EXT-04 | 可再生成或许可证清晰的 SDR 测试媒体 | 已完成当前测试准备 | P0-05 前 | Agent（生成） | 测试代码生成 WAV/Y4M 合成媒体；用户授权本机 result.mp4 用于 GUI 验证，哈希见 MVP 记录；视频及截图不纳入 Git |
-| EXT-05 | 本地 HTTP/HLS 测试服务和固定媒体 | HTTP 已完成；HLS 待验证 | P0-05 前 | Agent（实现） | Python 标准库服务仅监听 127.0.0.1 并支持 Range；原生测试使用 .NET 本机 HTTP 服务，已验证控制和 404 恢复；HLS 尚未单独实测 |
+| EXT-05 | 本地 HTTP/HLS 测试服务和固定媒体 | 已完成（已声明范围） | P0-05 前 | Agent（实现） | HTTP/Range 控制与 404 恢复已验证；`d7af8a5` 的 `HlsMediaServer` / `LibMpvHlsTests` 验证本机播放列表 + AAC 分片的加载、暂停、跨分片 seek、EOF 和错误恢复；视频 HLS、直播及自适应码率留待 Phase 1 |
 | EXT-06 | 4K HEVC Main10、AV1、HDR10 和 10-bit 渐变素材 | 已完成 | P0-10 前 | Codex | 已生成三份固定 4K10-bit 样本并通过哈希、元数据、完整 CPU 解码及无损梯度像素核验，详见 HDR/4K 记录 |
 | EXT-07 | HDR 显示器、GPU、驱动和 Windows 测试环境 | 已完成 | P0-10 | 用户 / Codex | 开发机 GTX 1060 5GB；HDR 验证机 RTX 3070（驱动 32.0.16.1692）+ 联合创新 GB27V1 4K 120 Hz（峰值 417 nit，未认证 HDR），Windows HDR 开启，2026-09-12 三轮验收见 `evidence/P0-10-01`、`P0-10-02` |
 
 说明：EXT-01、EXT-02、EXT-03、EXT-04、EXT-05 已有明确来源或实现策略；P0-02 的四个 DLL 全部来自仓库锁定的构建流程，没有来源不明的运行时资产。
 
-2026-09-12 P0-11 完成 Gate A～D 逐项审计：Gate A、B 通过，Gate C、D 在已声明范围内通过。Phase 0 记为「通过（范围内）」，未验证项见 `evidence/P0-11-01-phase-0-acceptance.md`；这些项目不阻塞 Phase 1 开始，但应在 Phase 1 早期补齐。
+2026-09-12 P0-11 完成 Gate A～D 逐项审计：Gate A、B 通过，Gate C、D 在已声明范围内通过。Phase 0 记为「通过（范围内）」，未验证项见 `evidence/P0-11-01-phase-0-acceptance.md`，并由 [Phase 1 计划](phase-1-plan.md)承接。双显示器/跨屏和长时间稳定性继续遵循用户延后决定；真实触屏、100%/125%/200% DPI、Intel/AMD GPU、HDR 仪器测量、HLG/Dolby Vision 等仍如实标为未验证，不据此增加 Phase 1 启动阻塞。
 
 ## 6. 验证记录
 
@@ -145,13 +148,14 @@ dotnet build mpv-winui.slnx -p:Platform=x64 --no-restore
 | 2026-09-10 | SDR MVP 发布 | Release win-x64，.NET/WinUI 自包含 | `build/testing/publish-mvp.ps1`，从最终目录运行应用并播放 result.mp4 | 通过：四 DLL 哈希/x64/加载/API2.5、三次会话创建销毁；GUI 正向播放到23秒并暂停 | `artifacts/mvp/win-x64/publish-verification.json`、`artifacts/mvp/evidence/release-playback.jpg` | MVP 已完成；不代表 P0-11 清理或 Gate D 已验收 |
 | 2026-09-11 | P0-10 实施与回归 | .NET SDK 10.0.401，Windows x64，GTX 1060 5GB | Debug/Release 全量 build/test，显式提供三份固定 4K 素材 | 两种配置均 0 警告/错误，各 138/138，无跳过 | `artifacts/hdr-4k/evidence/`、`test-results/`、`hardware-reports/`；详情见 `hdr-4k-progress.md` | HEVC Main10 GPU 纹理硬解、AV1 软件回退、10-bit/FP16 精度及 PQ 梯度通过，屏幕验收待进行 |
 | 2026-09-11 | P0-10 测试包 | Release win-x64，.NET/WinUI 自包含 | `publish-mvp.ps1 -OutputDirectory artifacts/hdr-4k/win-x64 -NoRestore` | 四 DLL 哈希/x64/加载/API2.5、3 次会话与 35 份许可证原文哈希通过 | `artifacts/hdr-4k/win-x64/publish-verification.json` | 独立目录保留旧 SDR MVP；尚不代表完整 Gate D 通过 |
-| 2026-09-12 | P0-10 外机验收 | RTX 3070，Windows 11 26200，GB27V1 4K 120 Hz，Windows HDR 开/关 | 测试包 7f8d613，用户按 8 步顺序验收；日志 MpvShell-RTX3070-Logs-20260912-101312-01da9b11.zip | 部分通过：0 次渲染等待超时、EOF 对齐、HDR 三路径与硬解通过；DPI 不感知致表面最大 2560×1440 | docs/implementation/evidence/P0-10-01-rtx3070-hdr-acceptance.md、rtifacts/rtx3070-analysis/101312-01da9b11/分析报告.md | 已加 PerMonitorV2 清单待复测；跨屏未验证 |
-| 2026-09-12 | P0-10 TS 对照 | GTX 1060，本机，同一 LG TS 文件与 17 个目标 | TsSeekDecodePathComparisonTests（MPVSHELL_TEST_TS_MEDIA） | 硬解与软解逐次 seek 错误组完全一致（各 430）；顺播 0 错误 | rtifacts/rtx3070-analysis/101312-01da9b11/local-ts-comparison/ | 定性为 MPEG-TS 随机访问行为，不改解码路径 |
-| 2026-09-12 | P0-10 外机复测 | RTX 3070，Windows 11 26200，GB27V1 4K 120 Hz 150% 缩放，Windows HDR 开 | 测试包 8eb84fa，三项复测；日志 MpvShell-RTX3070-Logs-20260912-114448-963fd26d.zip | 通过：全屏 3840×2160 / 缩放 1.0，4K60 HDR TS 59.94 fps、稳态 Render ≤ 10.79 ms，EOF 面板保留，0 错误/警告，退出码 0 | docs/implementation/evidence/P0-10-02-rtx3070-dpi-4k-retest.md、rtifacts/rtx3070-analysis/114448-963fd26d/分析报告.md | 跨屏与长时间按用户决定不验证；视觉为用户目视 |
+| 2026-09-12 | P0-10 外机验收 | RTX 3070，Windows 11 26200，GB27V1 4K 120 Hz，Windows HDR 开/关 | 测试包 7f8d613，用户按 8 步顺序验收；日志 MpvShell-RTX3070-Logs-20260912-101312-01da9b11.zip | 部分通过：0 次渲染等待超时、EOF 对齐、HDR 三路径与硬解通过；DPI 不感知致表面最大 2560×1440 | docs/implementation/evidence/P0-10-01-rtx3070-hdr-acceptance.md、artifacts/rtx3070-analysis/101312-01da9b11/分析报告.md | 已加 PerMonitorV2 清单待复测；跨屏未验证 |
+| 2026-09-12 | P0-10 TS 对照 | GTX 1060，本机，同一 LG TS 文件与 17 个目标 | TsSeekDecodePathComparisonTests（MPVSHELL_TEST_TS_MEDIA） | 硬解与软解逐次 seek 错误组完全一致（各 430）；顺播 0 错误 | artifacts/rtx3070-analysis/101312-01da9b11/local-ts-comparison/ | 定性为 MPEG-TS 随机访问行为，不改解码路径 |
+| 2026-09-12 | P0-10 外机复测 | RTX 3070，Windows 11 26200，GB27V1 4K 120 Hz 150% 缩放，Windows HDR 开 | 测试包 8eb84fa，三项复测；日志 MpvShell-RTX3070-Logs-20260912-114448-963fd26d.zip | 通过：全屏 3840×2160 / 缩放 1.0，4K60 HDR TS 59.94 fps、稳态 Render ≤ 10.79 ms，EOF 面板保留，0 错误/警告，退出码 0 | docs/implementation/evidence/P0-10-02-rtx3070-dpi-4k-retest.md、artifacts/rtx3070-analysis/114448-963fd26d/分析报告.md | 跨屏与长时间按用户决定不验证；视觉为用户目视 |
 | 2026-09-12 | P0-05 Gate A | 本机，.NET 10.0.401 | 新增 `HlsMediaServer` 与 `LibMpvHlsTests`（本机播放列表 + ADTS AAC 分片） | 通过：加载/暂停/跨分片 seek/EOF、缺失播放列表报错后会话可用、进程内 libmpv 无外部 mpv.exe；连续 5 次运行稳定 | `tests/MpvShell.Player.LibMpv.Tests/LibMpvHlsTests.cs` | HLS 缺口关闭 |
 | 2026-09-12 | P0-11 | 本机，.NET 10.0.401，GTX 1060 150% DPI | 删除旧路线 4 个项目；Debug/Release x64 build/test；`publish-mvp.ps1 -OutputDirectory artifacts/phase-0/win-x64`；发布产物播放 result.mp4 后窗口关闭 | 两种配置 0 警告/错误、各 184 通过 4 跳过；四 DLL 哈希/加载/API 2.5、3 次会话烟雾通过；产物 PerMonitorV2、退出码 0、无 mpv.exe 进程；旧引用扫描仅剩边界测试否定断言 | `docs/implementation/evidence/P0-11-01-phase-0-acceptance.md`、`artifacts/phase-0/win-x64/publish-verification.json` | Phase 0 范围内通过 |
 | 2026-09-12 | TS 跳转优化 | 本机 GTX 1060，锁定 libmpv 增量重编 | 新增 mpv demux 补丁与 `demuxer-skip-to-keyframe`；`TsSeekDecodePathComparisonTests` 四变体对照（合成 TS 与 LG TS）；`test-app-recovery.ps1 -Mode paused,playing`；Debug/Release 全量；闭包烟雾 | 产品配置错误组 88→0 / 430→0，落点 ≤ 11 ms，对照变体不变；恢复位置与像素不变；184 通过 4 跳过；闭包与导入不变 | `docs/implementation/evidence/ts-seek-keyframe-2026-09-12.md`、`artifacts/ts-seek/` | 新 libmpv SHA-256 `5E9D2D0D…` |
 | 2026-09-12 | TS 跳转优化外机复测 | RTX 3070，GB27V1 4K 120 Hz，Windows HDR 开 | 测试包 `a56cffd`，LG TS 两次加载 24 次精确跳转；日志 `MpvShell-RTX3070-Logs-20260912-134810-6b6e50f0.zip` | 通过：`Could not find ref` 0 条，呈现丢帧 0，落点 ≤ 12 ms，seek 中位数 68 ms，0 错误/警告，退出码 0；用户目视无卡顿 | `artifacts/rtx3070-analysis/134810-6b6e50f0/分析报告.md` | 补丁在目标机生效 |
+| 2026-09-12 | P1-00 基线复核 | `f793d0b`，.NET 10.0.401，Windows x64 | Debug/Release 全量 build/test；Debug 显式提供四项素材，Release 使用常规环境 | 构建均 0 警告/错误；Debug 188 通过、无跳过；Release 184 通过、4 项素材测试跳过 | `docs/implementation/evidence/P1-00-01-baseline-and-release-entry.md` | 保留上述历史数量；后续工作和最新产物转至 Phase 1 进度及发布状态 |
 
 ## 7. 技术决策记录
 
@@ -159,9 +163,9 @@ dotnet build mpv-winui.slnx -p:Platform=x64 --no-restore
 
 | 编号 | 日期 | 决策 | 状态 | 依据 | 影响 |
 |---|---|---|---|---|---|
-| DEC-01 | 2026-09-11 | HDR 使用 PQ 10-bit / BT.2020 | 已实施；屏幕验收待完成 | P0-10：真实 R10/FP16 存储与 PQ 像素测试，详见 HDR/4K 记录 | 使用 RGB10A2 SwapChain、PQ ColorSpace 与 Render API DEPTH=10；scRGB 的 80 nit 参考白与扩展色域转换未实现 |
-| DEC-02 | 2026-09-11 | 优先 D3D11VA + d3d11-egl，失败时软件回退 | 已实施；当前设备实测通过 | GTX 1060 HEVC Main10 硬解与 AV1 软件回退，结果写入解码诊断 | GPU 帧直接传递，禁用 copy-back 路线；其他 GPU 与 AV1 硬解设备待覆盖 |
-| DEC-03 |  | 是否增加极薄 C++/WinRT 图形桥接 | 待实测 | P0-06/P0-07 | 项目结构和原生资源所有权；P0-06 已用纯 C# + Vortice 表达 COM/资源所有权，暂不引入 C++ 桥接 |
+| DEC-01 | 2026-09-11 | HDR 使用 PQ 10-bit / BT.2020 | 已实施；屏幕验收范围内通过 | P0-10：真实 R10/FP16 存储与 PQ 像素测试；2026-09-12 RTX 3070 HDR 开关/切换及用户目视通过，详见 HDR/4K 记录 | 使用 RGB10A2 SwapChain、PQ ColorSpace 与 Render API DEPTH=10；scRGB 的 80 nit 参考白与扩展色域转换未实现；未做仪器测量和跨屏验收 |
+| DEC-02 | 2026-09-11 | 优先 D3D11VA + d3d11-egl，失败时软件回退 | 已实施；已验证硬件范围内通过 | GTX 1060 HEVC Main10 硬解与 AV1 软件回退、RTX 3070 HEVC/AV1 硬解，原始日志依据见 HDR/4K 记录 | GPU 帧直接传递，禁用 copy-back 路线；Intel/AMD 等其他 GPU 待覆盖 |
+| DEC-03 | 2026-09-12 | 沿用 C# / Vortice，暂不增加 C++/WinRT 图形桥接 | 已决定 | P0-06/P0-07 的 COM/资源所有权实现、真实 GPU 色块、resize 与上下文重建证据 | 现有路线已满足 Phase 0 范围内要求；继续使用 C# / Vortice，与 `docs/architecture.md` 第 17 节一致 |
 | DEC-04 |  | 最低 Windows/驱动支持范围 | 待实测 | P0-09/P0-10 | 发布要求和已知限制 |
 | DEC-P06-01 | 2026-08-28 | 使用 Vortice.Direct3D11 3.8.3 作为 D3D11/DXGI COM 互操作层 | 已实施 | P0-06 | 成熟的社区库，兼容 .NET 10，免手动 vtable 声明 |
 | DEC-P06-02 | 2026-08-28 | ISwapChainPanelNative GUID 为 63aad0b8-7c24-40ff-85a8-640d944cc325 | 已实施 | P0-06 | 来源于 Vortice.WinUI 的 WinUI 3 实现（microsoft.ui.xaml.media.dxinterop） |

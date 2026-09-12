@@ -1,14 +1,17 @@
 # SDR 播放 MVP 实施记录
 
-日期：2026-09-10。状态：SDR 播放 MVP 已完成。本地/HTTP 播放、主要 GUI 交互、Debug/Release 回归与自包含发布产物均已验证；完整 Phase 0、HDR 与硬解验收仍未完成。
+> 当前状态（2026-09-12）：SDR MVP 已完成，后续 Phase 0 已在声明范围内通过；当前工作统一见 [Phase 1 进度](phase-1-progress.md)与[实施计划](phase-1-plan.md)。最新测试包与运行方式见[发布状态](release-status.md)。
+> 当前回归：`f793d0b` 的 Debug / Release 构建均为 0 警告、0 错误；Debug 188 通过、无跳过，Release 184 通过、4 项素材测试跳过。证据见 [Phase 1 基线复核](evidence/P1-00-01-baseline-and-release-entry.md)。
+
+本文保留 2026-09-10 的 SDR MVP 实施快照。本地/HTTP 播放、主要 GUI 交互、Debug/Release 回归与自包含发布产物在当日已验证；当时完整 Phase 0、HDR 与硬解验收尚未完成，后续结果见 [Phase 0 进度](phase-0-progress.md)和 [HDR/4K 记录](hdr-4k-progress.md)。下文的测试数量、产物和未验证状态均按日期解读。
 
 ## 范围与执行顺序
 
 用户要求继续推进项目，至少完成可用的播放 MVP；提供 `C:\Users\a1426\Downloads\result.mp4` 作为本机测试文件，并明确暂缓 HDR 显示器与验证环境。沿用 libmpv Client/Render API → ANGLE/EGL → D3D11 Composition SwapChain → WinUI 3 SwapChainPanel 的架构；本地文件纳入当前播放范围。
 
-本轮完成基础 ABI、会话、命令事件、SDR 渲染与应用组合根接入后进行端到端验证。HDR、4K 硬解、多 GPU/显示器矩阵仍保持未验证，Phase 0 全部闸口尚未验收。
+2026-09-10 完成基础 ABI、会话、命令事件、SDR 渲染与应用组合根接入后进行端到端验证。当时 HDR、4K 硬解、多 GPU/显示器矩阵保持未验证，Phase 0 全部闸口尚未验收。
 
-## 当前实现
+## SDR MVP 实现快照（2026-09-10）
 
 - `MpvPlayerSession` 独立事件/命令线程、唯一请求 ID、超时/取消、幂等关闭。
 - `LibMpvBackend` 本地/HTTP/HTTPS 媒体加载，真实暂停、时间、轨道、详情、EOF 与错误事件。
@@ -31,12 +34,12 @@
 
 ## 验证记录
 
-| 检查 | 当前证据 |
+| 检查 | 2026-09-10 证据 |
 |---|---|
 | 开始前构建/测试 | x64 Debug 构建 0 警告/0 错误，53/53 测试通过 |
 | 原生 ABI | 固定三个头文件哈希一致；MSVC 独立 C 编译验证结构布局与关键枚举 |
 | 首轮集成构建 | 修正 Vortice MatrixTransform、XAML 控件禁用容器、DispatcherQueueTimer 名称歧义后构建 0 警告/0 错误 |
-| 当前完整回归 | Debug 与 Release 全量构建均为 0 警告、0 错误；两种配置各通过 95/95 测试：App 34，LibMpv 30，Rendering 23，Abstractions 2，Sidecar 5，VideoHost 1 |
+| 当日完整回归 | Debug 与 Release 全量构建均为 0 警告、0 错误；两种配置各通过 95/95 测试：App 34，LibMpv 30，Rendering 23，Abstractions 2，Sidecar 5，VideoHost 1 |
 | 原生依赖 | 四 DLL 哈希/加载成功；Client API 2.5；ANGLE D3D11 / EGL 1.5 / GLES 3.0 |
 | 会话与控制 | 真实会话连续创建/销毁 100 次；原生暂停、seek、轨道、EOF 重播、请求关联、取消与错误恢复测试通过 |
 | 本地实际播放 | 使用原生 FilePicker 选择用户的 result.mp4，真实视频正向显示；初轮播放日志超过 1200 帧并报告 EOF |
@@ -65,7 +68,7 @@ dotnet build mpv-winui.slnx -c Release -p:Platform=x64 --no-restore
 dotnet test mpv-winui.slnx -c Release -p:Platform=x64 --no-build --no-restore
 ```
 
-发布与运行命令（仓库根目录，PowerShell 7）：
+历史 SDR MVP 发布与运行命令（2026-09-10，仓库根目录，PowerShell 7）；当前测试包统一见[发布状态](release-status.md)：
 
 ```powershell
 .\build\testing\publish-mvp.ps1
@@ -74,14 +77,14 @@ dotnet test mpv-winui.slnx -c Release -p:Platform=x64 --no-build --no-restore
 
 发布包应整体复制；EXE 依赖同目录内的自包含运行时、WinUI 资源及固定原生 DLL。
 
-## 已知限制
+## 已知限制与后续状态（更新至 2026-09-12）
 
-- 当前默认软件解码；HDR 与 4K 硬解按用户安排延后，未完成硬件验收。
+- SDR MVP 当日默认软件解码；后续已启用 D3D11VA / d3d11-egl，HDR 与 4K 硬解在已声明硬件范围内通过，详见 [HDR/4K 记录](hdr-4k-progress.md)。
 - HLS 已于 2026-09-12 通过本机播放列表集成测试验证（`LibMpvHlsTests`）；自适应码率切换未在范围内。
 - “最近打开”保存在当前进程内，重启应用后不保留。
-- 全 DPI、真实触屏和多 GPU/显示器矩阵尚未验收；当前色块测试证明方向与基本色彩正确，不能作为 HDR 或完整色彩管理结论。
+- 真实触屏、100%/125%/200% DPI、Intel/AMD GPU、HDR 仪器测量、HLG/Dolby Vision 等未验证；跨屏和长时间稳定性继续按用户决定延后。已验证 150% DPI 和 RTX 3070 上的 4K 表面，SDR 色块测试仍不能替代完整色彩管理结论。
 
-## MVP 验收结果
+## MVP 验收结果（2026-09-10 历史快照）
 
 - [x] Debug/Release 全量构建与 95/95 测试。
 - [x] 修正后的本地视频方向、暂停与时间轴 seek。

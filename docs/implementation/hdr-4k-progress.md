@@ -1,11 +1,14 @@
-# HDR / 4K 硬解实施与晚间验收
+# HDR / 4K 硬解实施与验收记录
 
-日期：2026-09-11。用户已恢复 HDR/4K 硬解工作，并安排晚间亲自测试。本文记录实现、自动化证据、可再生成的测试输入与人工验收方法；真实 HDR 显示效果与跨屏结论仍需晚间运行记录补齐。
+> 当前状态（2026-09-12）：HDR / 4K 与 Phase 0 在已声明范围内通过，RTX 3070 第四轮 TS 跳转复测通过；后续工作统一见 [Phase 1 进度](phase-1-progress.md)与[实施计划](phase-1-plan.md)。最新测试包与运行方式见[发布状态](release-status.md)。
+> 当前回归：`f793d0b` 的 Debug / Release 构建均为 0 警告、0 错误；Debug 显式提供四项素材后 188 通过、无跳过，Release 常规回归 184 通过、4 项素材测试跳过。证据见 [Phase 1 基线复核](evidence/P1-00-01-baseline-and-release-entry.md)。
 
-## 本轮范围与状态
+本文从 2026-09-11 的实现与晚间测试准备开始，按日期保留失败、修复及外机验收记录。屏幕验收已在单显示器、短时段、用户目视范围内完成；跨屏和长时间稳定性继续按用户决定延后，真实触屏、100%/125%/200% DPI、Intel/AMD GPU、HDR 仪器测量、HLG/Dolby Vision 等仍未验证。这些范围不构成新增的 Phase 1 启动阻塞。
+
+## 实施范围
 
 - 显示器检测读取 Windows 当前窗口的 Advanced Color 状态，区分“设备支持 HDR”和“Windows 已启用 HDR”，并获取系统 SDR 白亮度、峰值亮度和输出名称。查询失败保留未知状态。
-- HDR 渲染、硬解配置、应用集成与最终 Debug/Release 回归由本轮主任务统一记录；素材校验通过不等于这些项目通过。
+- HDR 渲染、硬解配置、应用集成、回归及屏幕验收分别记录；素材校验通过不等于这些项目通过。
 - 下述素材全部在本机生成，不使用用户私人视频，不依赖公网媒体地址。媒体、工具和原始报告位于 Git 忽略的 `artifacts/hdr-4k/`；仓库只保存生成器、校验脚本与记录。
 
 ## 输出路线与实现边界
@@ -26,7 +29,9 @@ HDR 目标峰值取系统报告值；缺失时采用明确标记的 1000 nit 默
 
 本轮真实样本测试发现原生库原先没有编入 ANGLE 硬解互操作。启用后又发现锁定 mpv 在 EGL display 扩展中查找 `EGL_EXT_device_query`，而锁定 ANGLE 在 client 扩展中发布它；补丁兼容两种查询位置，仍要求真实扩展存在。ANGLE 模块从宿主已校验、已加载的 `libEGL.dll` 句柄获取，不引入依赖搜索路径回退。
 
-首次 AV1 样本测试没有输出帧，原因是旧 FFmpeg 构建缺少适用的软件 AV1 解码器。本轮静态集成锁定的 dav1d 1.5.4 与 x64 SIMD，实现无 AV1 硬解能力时的软件回退。最终原生库 SHA-256 为 `932D70710EECAA1D686D1E49674AE9A13C555E6C4701695858B5163A8C5DFAAB`，32,123,392 字节；四 DLL 闭包、20 个 Windows 系统导入和 Client API 2.5 已核验。
+首次 AV1 样本测试没有输出帧，原因是旧 FFmpeg 构建缺少适用的软件 AV1 解码器。2026-09-11 静态集成锁定的 dav1d 1.5.4 与 x64 SIMD，实现无 AV1 硬解能力时的软件回退。当日原生库 SHA-256 为 `932D70710EECAA1D686D1E49674AE9A13C555E6C4701695858B5163A8C5DFAAB`，32,123,392 字节；四 DLL 闭包、20 个 Windows 系统导入和 Client API 2.5 已核验。2026-09-12 TS 补丁已再次更新原生库，当前产物以[发布状态](release-status.md)为准。
+
+AV1 验证范围现已包括 GTX 1060 软件回退和 RTX 3070 硬解。外机原始日志 `artifacts/rtx3070-analysis/203122-0fec3020/logs/20260911-202801-fb294d8ec53e432da364eb4736f664b8/session-20260911-202803-347-15076.log` 第 524 行记录 `Using hardware decoding (d3d11va)`，第 530 行同一 AV1 媒体状态记录 3840×2160、`d3d11-egl`、`d3d11` / `p010`；见 [RTX 3070 原始日志分析](../../artifacts/rtx3070-analysis/203122-0fec3020/分析报告.md)。这是解码与互操作证据，不外推首次测试包的表面尺寸、其他 GPU 或长期性能。
 
 另一次原生测试发现 mpv 的 `target-peak` 是带枚举项的整数选项，不能按 Double 设置；已改用经过取整和范围约束的字符串。源码锁与补丁进入仓库，本文保留失败原因及最终复测结果。
 
@@ -38,13 +43,13 @@ HDR 目标峰值取系统报告值；缺失时采用明确标记的 1000 nit 默
 
 **进度停在最后一帧时间戳已修复。** mpv 的 `time-pos` 在 EOF 时停在最后一帧（8 秒 30 fps 素材为 7.967 秒，见 3070 日志），UI 向下取整显示 00:07 / 00:08。后端在 EOF（`eof-reached` 或 EndFile reason 0）时把位置对齐到已知时长；时长未知时保留最后位置。下一次加载由 StartFile 重置为 0。
 
-**LG TS 跳转后的 HEVC 参考帧错误未改代码。** 报告要求用同一文件、同一组目标时间对比顺播、硬解和软解后再决定，现有日志不能区分 TS 随机访问与解码路径问题，因此不禁用硬解、不改 seek 策略。复测时请分别记录三种方式下 `Could not find ref with POC` 的组数和是否肉眼可见花屏。
+**首轮历史结论：LG TS 跳转后的 HEVC 参考帧错误暂未改代码。** 当时报告要求用同一文件、同一组目标时间对比顺播、硬解和软解后再决定，已有日志不能区分 TS 随机访问与解码路径问题，因此当轮不禁用硬解、不改 seek 策略。后续对照与最终修复见下文第二轮验收及“TS 跳转优化”。
 
 ## RTX 3070 第二轮验收（2026-09-12）
 
 用户使用 `7f8d613` 的测试包完成 8 步验收，日志分析见 [第二轮分析报告](../../artifacts/rtx3070-analysis/101312-01da9b11/分析报告.md)，验收记录见 [`evidence/P0-10-01-rtx3070-hdr-acceptance.md`](evidence/P0-10-01-rtx3070-hdr-acceptance.md)。上一轮两项修复在目标机验证通过：24 次输出重配 0 次渲染等待超时，HDR 重配耗时由约 600 ms 降至约 5 至 45 ms；14 次 EOF 位置均对齐时长。HDR 开、关、播放中切换、HEVC MP4 硬解、41 次 MP4 跳转 0 错误、正常退出均通过；视觉项为用户目视通过，无截图。
 
-**DPI 不感知（已修，待复测）。** 两轮日志的窗口尺寸最大只有 2560×1440，本机验证交付包进程 `GetProcessDpiAwareness` 为 Unaware：未打包 WinUI 3 应用不会自动声明 DPI 感知，4K 150% 屏被虚拟化成 2560×1440，SwapChain 也只有这么大。因此此前的「4K 硬解」都没有 4K 表面输出。本轮新增 `app.manifest` 声明 PerMonitorV2；页面与 `AttachAsync` 改读 `XamlRoot.RasterizationScale`（`UIElement.RasterizationScale` 是元素级额外缩放，恒为 1.0）；主窗口初始尺寸按 DPI 换算。本机 150% 屏验证：视频表面由 732×469 变为 1658×1084 物理像素。
+**DPI 不感知（第二轮修复，第三轮已复测通过）。** 两轮日志的窗口尺寸最大只有 2560×1440，本机验证交付包进程 `GetProcessDpiAwareness` 为 Unaware：未打包 WinUI 3 应用不会自动声明 DPI 感知，4K 150% 屏被虚拟化成 2560×1440，SwapChain 也只有这么大。因此此前的「4K 硬解」都没有 4K 表面输出。本轮新增 `app.manifest` 声明 PerMonitorV2；页面与 `AttachAsync` 改读 `XamlRoot.RasterizationScale`（`UIElement.RasterizationScale` 是元素级额外缩放，恒为 1.0）；主窗口初始尺寸按 DPI 换算。本机 150% 屏验证：视频表面由 732×469 变为 1658×1084 物理像素。
 
 **LG TS 跳转错误定性为 TS 随机访问行为，不改解码路径。** 3070 日志：同一 TS 顺播 132 秒 0 错误，24 次 seek 中 22 次各 5 至 53 组错误；MP4 41 次 seek 0 错误。本机新增 `TsSeekDecodePathComparisonTests`（设 `MPVSHELL_TEST_TS_MEDIA` 后运行）用同一文件、同一 17 个目标对照：硬解与软解逐次 seek 的落点和错误组数完全一致（各 430 组）；`hr-seek-demuxer-offset=0` 时落点晚 0.09 至 1.0 秒，错误组数等于滞后帧数减 2 至 3。错误产生于 FFmpeg `hevc_frame_start` 的 RPS 构建，在 hwaccel `start_frame` 之前。结论：MPEG-TS demuxer 对这份无索引流无法从关键帧起解，mpv 逐帧跳过落点到下一 IRAP 之间的帧；不应禁用硬解。若要改善 TS 跳转体验，方向是让 seek 落到关键帧，而非动解码路径。
 
@@ -60,9 +65,9 @@ Gate D 结论：在「单显示器、短时段、用户目视」范围内通过�
 
 上午定性为 MPEG-TS 随机访问行为的跳转错误，下午在 demuxer 层修复：mpv 0.41 只在缓存内 seek 找不到目标包时才等到关键帧，对新鲜的 demuxer seek 会把 GOP 中间的非关键帧直接交给解码器。锁定 libmpv 新增 `mpv-demux-seek-skip-to-keyframe.patch`（`--demuxer-skip-to-keyframe`），应用固定开启并保留 `hr-seek-demuxer-offset=1` 作为回退窗口。同一 LG TS、同一 17 个目标：产品配置错误组 430 → 0，落点偏差不超过 11 ms，延迟中位数 +14 ms；关闭该选项的对照变体仍为 430。合成开放 GOP 样片（`build/testing/prepare-ts-seek-media.ps1`）88 → 0。应用内暂停恢复位置与像素不变。新 `libmpv-2.dll` SHA-256 `5E9D2D0D…`，闭包与导入不变。详见 [`evidence/ts-seek-keyframe-2026-09-12.md`](evidence/ts-seek-keyframe-2026-09-12.md)；RTX 3070 第四轮复测通过：24 次跳转 0 错误、呈现丢帧 0、落点 ≤ 12 ms，用户目视无卡顿。
 
-## 本轮自动化结果
+## 2026-09-11 自动化结果（历史快照）
 
-最终 Debug、Release 构建均为 0 警告、0 错误，各通过 **138/138** 测试，无跳过：App 36、LibMpv 43、Rendering 51、Abstractions 2、旧项目 6。已显式提供三份素材路径，因此 HEVC、AV1 与 HDR 梯度测试实际执行；日常不设置素材环境变量时，这三项由 xUnit 明确报告跳过。
+当日 Debug、Release 构建均为 0 警告、0 错误，各通过 **138/138** 测试，无跳过：App 36、LibMpv 43、Rendering 51、Abstractions 2、旧项目 6。已显式提供三份素材路径，因此 HEVC、AV1 与 HDR 梯度测试实际执行；当日不设置素材环境变量时，这三项由 xUnit 明确报告跳过。当前数量及四项素材测试的执行条件见页首基线复核。
 
 原始构建/测试日志位于 `artifacts/hdr-4k/evidence/`，TRX 位于 `artifacts/hdr-4k/test-results/Debug/` 与 `Release/`。真实媒体报告及 mpv 日志按配置保存在 `artifacts/hdr-4k/hardware-reports/Debug/` 与 `Release/`。
 
@@ -144,11 +149,11 @@ FFmpeg 官方只发布源码；本轮使用其[官方下载页](https://ffmpeg.o
 
 首轮校验发现仅传编码器色彩选项时，容器流信息中的 primaries/transfer 未保留，校验按预期失败。生成器已同时通过 `setparams` 标注真实源帧，随后重新编码；PQ 数学图案没有改变。保留该失败记录，不把单靠文件名或 SEI 推断的 HDR 标签作为完整元数据验证。
 
-## 今晚建议的测试顺序
+## 2026-09-11 晚间测试顺序（历史方案）
 
-自动化像素读回与显示器验收分开记录：`HdrGradientIntegrationTests` 读取同一份暂停的无损 PQ 图案，在不做 tone mapping 的目标峰值下对照 11 档 PQ 码值，再检查 1000 nits 目标和 SDR 输出的黑位、单调性与高光范围；报告使用 `hdr-gradient-pixel-report.json`。R10G10B10A2 连续码与 FP16 大于 1/负值/细小阶差等基础测试验证 GPU 表面精度。这些结果能证明像素通路及配置行为，不能证明显示器已经输出正确的物理亮度，也不能替代今晚的 Windows HDR/跨屏观察。
+以下保留当时的测试方案，不作为当前重新启动验收的要求；实际完成范围见上方各轮记录，用户已延后的跨屏与长期验证继续保留。自动化像素读回与显示器验收分开记录：`HdrGradientIntegrationTests` 读取同一份暂停的无损 PQ 图案，在不做 tone mapping 的目标峰值下对照 11 档 PQ 码值，再检查 1000 nits 目标和 SDR 输出的黑位、单调性与高光范围；报告使用 `hdr-gradient-pixel-report.json`。R10G10B10A2 连续码与 FP16 大于 1/负值/细小阶差等基础测试验证 GPU 表面精度。这些结果能证明像素通路及配置行为，不能证明显示器已经输出正确的物理亮度，也不能替代 Windows HDR/跨屏观察。
 
-本轮新发布包目录为 `artifacts/hdr-4k/win-x64/`，从该目录的 `MpvShell.App.exe` 启动。已完成 Release 自包含发布、四 DLL 哈希/x64/加载/API 2.5、3 次会话创建销毁及 35 份许可证原文哈希校验，报告为目录内的 `publish-verification.json`。发布目录含 .NET/WinUI 运行时，应整体保留；重新生成命令：
+当日发布包目录为 `artifacts/hdr-4k/win-x64/`，用于追溯 2026-09-11 验证；最新测试包统一见[发布状态](release-status.md)。当日已完成 Release 自包含发布、四 DLL 哈希/x64/加载/API 2.5、3 次会话创建销毁及 35 份许可证原文哈希校验，报告为目录内的 `publish-verification.json`。发布目录含 .NET/WinUI 运行时，应整体保留；历史生成命令：
 
 ```powershell
 .\build\testing\publish-mvp.ps1 -OutputDirectory (Join-Path (Get-Location) artifacts/hdr-4k/win-x64) -NoRestore
@@ -164,14 +169,14 @@ FFmpeg 官方只发布源码；本轮使用其[官方下载页](https://ffmpeg.o
 6. **HDR/SDR 跨屏**：如有两台不同模式的显示器，在播放与暂停状态下各移动窗口往返至少 5 次；检查输出名称、HDR 当前状态、亮度和渲染格式跟随改变。再在同一 HDR 显示器上切换 HDR 开关至少 3 次，观察能否恢复播放。没有对应硬件时如实记“未验证”。
 7. **退出与性能记录**：对 HEVC/AV1 各循环播放、跳转和切换媒体至少 10 次，记录丢帧计数、CPU/GPU/显存、首帧时间、Present 失败、异常日志，再关闭应用。8 秒图案只提供基础回归；长时间和高码率性能要另加固定素材。
 
-## 验收填写表
+## 验收汇总（更新至 2026-09-12）
 
-| 项目 | 预期证据 | 本轮结果 |
+| 项目 | 预期证据 | 已验证结果 |
 |---|---|---|
 | 样本完整性与元数据 | `media-verification.json`，三份样本哈希及 CPU 解码 | 2026-09-11 通过；FFV1 首帧像素与原图一致 |
-| Debug/Release 构建与自动化 | 完整命令、退出码、测试数 | 两种配置均 0 警告/错误，138/138 通过，无跳过 |
+| Debug/Release 构建与自动化 | 完整命令、退出码、测试数 | `f793d0b` 复核：两种配置均 0 警告/错误；Debug 188 通过、无跳过；Release 184 通过、4 项素材测试按环境跳过，见 `evidence/P1-00-01-baseline-and-release-entry.md` |
 | HEVC Main10 4K 实际硬解 | decoder / hwdec 实际值、像素格式、无 CPU 逐帧复制的路径日志 | GTX 1060 实测通过，D3D11VA / d3d11-egl / P010，60 帧与非黑像素核验 |
-| AV1 4K 硬解或软件回退 | 当前硬件能力与实际 decoder / hwdec 对照 | 当前设备实测软件回退通过，60 帧；AV1 硬解硬件覆盖未验证 |
+| AV1 4K 硬解或软件回退 | 当前硬件能力与实际 decoder / hwdec 对照 | GTX 1060 实测软件回退通过，60 帧；RTX 3070 外机原始日志证实 AV1 4K30 的 D3D11VA / d3d11-egl / P010，依据见“原生解码与兼容修复”；不外推其他 GPU |
 | Windows HDR 开/关 | 系统状态、输出模式、相同素材观察 | 2026-09-12 RTX 3070 通过：日志证实 PQ 10-bit / SDR 色调映射切换与播放中三次开关；视觉为用户目视通过 |
 | 渐变、暗部、高光、XAML 亮度 | 显示器条件、对照配置、观察说明 | 2026-09-12 RTX 3070 用户目视通过，无截图；显示器为未认证 HDR |
 | HDR/SDR 跨屏与全屏/DPI | 每次切换前后的显示器和输出日志 | 2026-09-12 第三轮：PerMonitorV2 生效，全屏 3840×2160 / 缩放 1.0，28 次尺寸切换无异常；跨屏按用户决定不验证（单显示器） |

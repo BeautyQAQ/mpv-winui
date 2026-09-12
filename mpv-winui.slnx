@@ -39,5 +39,9 @@
     <File Path="docs/implementation/native-dependency-manifest.md" />
     <File Path="docs/implementation/phase-0-plan.md" />
     <File Path="docs/implementation/phase-0-progress.md" />
+    <File Path="docs/implementation/phase-1-plan.md" />
+    <File Path="docs/implementation/phase-1-progress.md" />
+    <File Path="docs/implementation/release-status.md" />
+    <File Path="docs/implementation/evidence/P1-00-01-baseline-and-release-entry.md" />
   </Folder>
 </Solution>

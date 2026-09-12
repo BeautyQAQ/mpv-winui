@@ -1,5 +1,7 @@
 # 本机 HTTP 播放验证
 
+当前工作包与验收标准见 [Phase 1 计划](../../docs/implementation/phase-1-plan.md)，可用 ZIP、启动方式和发布登记见 [当前发布包入口](../../docs/implementation/release-status.md)。本页说明测试工具，不指定最新产物目录。
+
 `serve-media.py` 仅依赖 Python 标准库，把指定的本地 MP4 文件发布到 `127.0.0.1`，便于使用应用的 URL 输入验证 HTTP 播放和跳转。它只提供 `/sample.mp4`，支持完整 GET、HEAD 和单段字节 Range，不提供目录浏览。
 
 在仓库根目录运行（`python` 应指向已安装的 Python 3）：
