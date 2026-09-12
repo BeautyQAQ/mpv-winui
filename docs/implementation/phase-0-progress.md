@@ -1,7 +1,7 @@
 # Phase 0 实施进度
 
-> 总体状态：进行中（SDR MVP 已完成；Gate D 在 RTX 3070 单显示器短时段范围内通过；Gate A～C 正式验收与 P0-11 尚未完成）
-> 当前阶段：P0-10 已完成范围内验收；下一步为 Gate A～C 正式证据审计与 P0-11
+> 总体状态：通过（范围内）。Gate A～D 均有可复核证据；未验证项为用户决定跳过或缺少硬件的双显示器、长时间稳定性、真实触屏、100%/125%/200% DPI，见 `evidence/P0-11-01-phase-0-acceptance.md`
+> 当前阶段：Phase 0 已完成（P0-11 于 2026-09-12 收尾）；后续进入 Phase 1 输入整理
 > 最后更新：2026-09-12
 > 架构基线：`docs/architecture.md` v1.1  
 > 执行计划：`docs/implementation/phase-0-plan.md`
@@ -23,7 +23,7 @@
 
 ## 2. 初始基线与当前回归
 
-当前回归日期：2026-09-11。SDK 为 .NET 10.0.401，Windows x64；Debug、Release 全量构建均通过且无警告/错误，两种配置各通过 138 个测试，无跳过：App 36、LibMpv 43、Rendering 51、Abstractions 2、Sidecar 5、VideoHost 1。已实际验证 4K HEVC Main10 的 D3D11VA / EGL / P010 GPU 帧传递、AV1 软件回退和 HDR 梯度像素。完整结果与晚间显示器验收见 [HDR/4K 记录](hdr-4k-progress.md)。原 2026-09-10 SDR MVP 发布与 GUI 记录保留在 `artifacts/mvp/`；本轮使用独立的 `artifacts/hdr-4k/`。
+当前回归日期：2026-09-12。SDK 为 .NET 10.0.401，Windows x64；旧路线项目已移除，Debug、Release 全量构建均通过且无警告/错误，两种配置各通过 184 个测试、4 项需显式素材的测试按环境跳过（已单独执行）：App 54、LibMpv 79、Rendering 49+4、Abstractions 2。已实际验证 4K HEVC Main10 的 D3D11VA / EGL / P010 GPU 帧传递、AV1 软件回退和 HDR 梯度像素。完整结果与晚间显示器验收见 [HDR/4K 记录](hdr-4k-progress.md)。原 2026-09-10 SDR MVP 发布与 GUI 记录保留在 `artifacts/mvp/`；本轮使用独立的 `artifacts/hdr-4k/`。
 
 以下为 2026-08-28 初始审计快照（P0-00 当日复核），保留历史状态，不代表当前实现：
 
@@ -32,8 +32,8 @@
 - SDK：.NET SDK `10.0.400`（MSBuild 18.9.6，运行时 Microsoft.NETCore.App 10.0.11 / Microsoft.WindowsDesktop.App 10.0.11）
 - 开发机（x64 开发机确认）：Windows 11 专业版 10.0.26200，x64，主 GPU NVIDIA GeForce GTX 1060 5GB（驱动 32.0.15.8180，2025-10-29）
 - HDR 验证机：未确认（见 EXT-07）
-- 目标生产项目：App、Abstractions、LibMpv、Rendering.WinUI 共 4 个；过渡期 Sidecar、VideoHost 继续保留
-- 目标测试项目：对应目标生产项目共 4 个；过渡期旧项目测试继续保留
+- 目标生产项目：App、Abstractions、LibMpv、Rendering.WinUI 共 4 个；过渡期 Sidecar、VideoHost 曾保留，已于 2026-09-12 P0-11 移除
+- 目标测试项目：对应目标生产项目共 4 个；过渡期旧项目测试已随 P0-11 移除
 - 默认配置构建：通过，0 警告、0 错误（2026-08-28 P0-01 复核确认）
 - 默认配置测试：通过 33 个（2026-08-28 P0-01 复核确认）
   - `MpvShell.Player.Abstractions.Tests`：2
@@ -68,23 +68,23 @@ dotnet build mpv-winui.slnx -p:Platform=x64 --no-restore
 | P0-00 基线与输入确认 | 通过 | Copilot Agent | 2026-08-28 | 2026-08-28 | b2f4ccf |
 | P0-01 目标项目骨架和抽象边界 | 通过 | Codex | 2026-08-28 | 2026-08-28 | `21070a4` | 目标项目、x64 配置和无 HWND 抽象均已验证 |
 | P0-02 原生依赖与确定性加载 | 通过 | Codex | 2026-08-29 | 2026-08-30 | （待提交） | 真实 mpv/ANGLE 构建、四 DLL 闭包、许可证/PE 导入审计、哈希、固定输出加载与 D3D11 EGL 烟雾测试均通过 |
-| P0-03 libmpv C ABI 互操作层 | 进行中 | Codex | 2026-09-10 |  |  | 已实现固定头文件对应 ABI、UTF-8 和原生参数；MSVC C 布局核验与原生测试通过，待正式工作包验收回填 |
-| P0-04 会话生命周期 | 进行中 | Codex | 2026-09-10 |  |  | 独立事件/命令线程、取消、幂等关闭及 context→core 释放；100 次真实会话循环通过 |
-| P0-05 命令、事件和播放控制 | 进行中 | Codex | 2026-09-10 |  |  | Gate A：本地/HTTP 控制、暂停、seek、EOF/重播和加载错误恢复已验证；HLS 尚未单独实测 |
+| P0-03 libmpv C ABI 互操作层 | 通过 | Codex | 2026-09-10 | 2026-09-12 | `d7af8a5` | 已实现固定头文件对应 ABI、UTF-8 和原生参数；MSVC C 布局核验与原生测试通过，待正式工作包验收回填；P0-11 审计回填：ABI 布局/UTF-8/释放顺序测试持续通过 |
+| P0-04 会话生命周期 | 通过 | Codex | 2026-09-10 | 2026-09-12 | `d7af8a5` | 独立事件/命令线程、取消、幂等关闭及 context→core 释放；100 次真实会话循环通过；发布烟雾 3 次会话与外机三轮正常释放 |
+| P0-05 命令、事件和播放控制 | 通过 | Codex | 2026-09-10 | 2026-09-12 | `d7af8a5` | Gate A：本地/HTTP/HLS 控制、暂停、seek、EOF/重播、加载错误恢复、无外部 mpv、日志脱敏均有自动化与人工证据 |
 | P0-06 D3D11 与 SwapChainPanel 基线 | 通过 | Copilot Agent / Codex | 2026-08-28 | 2026-08-29 | （待提交） | 清屏/Present、原生面板绑定、窗口尺寸同步及人工硬件验证均通过；Rendering 18 测试通过 |
-| P0-07 ANGLE/EGL 与 OpenGL FBO | 进行中 | Codex | 2026-09-10 |  |  | D3D11 纹理直接导入 EGL pbuffer；真实 GPU 色块、resize 和上下文重建通过 |
-| P0-08 Render API SDR 集成 | 进行中 | Codex | 2026-09-10 |  |  | Gate B：用户视频正向进入 SwapChainPanel；软件解码 SDR、暂停和 seek 已实测，完整性能/色彩与窗口矩阵待验收 |
-| P0-09 覆盖层、输入与生命周期 | 进行中 | Codex | 2026-09-10 |  |  | Gate C：文件选择、暂停、时间轴、轨道/信息覆盖层已实测；UI 派发和关闭竞争测试通过，完整输入/显示器矩阵待验收 |
+| P0-07 ANGLE/EGL 与 OpenGL FBO | 通过 | Codex | 2026-09-10 | 2026-09-12 | `d7af8a5` | D3D11 纹理直接导入 EGL pbuffer；真实 GPU 色块、resize 和上下文重建通过；外机日志证实 ANGLE D3D11 后端与 3840×2160 表面 |
+| P0-08 Render API SDR 集成 | 通过 | Codex | 2026-09-10 | 2026-09-12 | `d7af8a5` | Gate B：Render API 视频进入 SwapChainPanel，150% DPI、全屏、28 次尺寸切换、渲染连续性与释放顺序均有证据 |
+| P0-09 覆盖层、输入与生命周期 | 通过（范围内） | Codex | 2026-09-10 | 2026-09-12 | `d7af8a5` | Gate C：鼠标/键盘/全屏/150% DPI/单显示器通过；真实触屏、其他 DPI、双显示器未验证 |
 | P0-10 4K、硬解和 HDR 验证 | 通过（范围内） | Codex | 2026-09-11 | 2026-09-12 | `8eb84fa` | RTX 3070 三轮验收：HDR 开关/切换、硬解、PerMonitorV2 下 4K 表面 59.94 fps、EOF 面板保留、正常退出；跨屏与长时间按用户决定不验证；详见 `hdr-4k-progress.md`、`evidence/P0-10-01`、`P0-10-02` |
-| P0-11 切换、清理与 Phase 0 验收 | 未开始 |  |  |  |  | 仅 Gate A～D 全部通过后开始 |
+| P0-11 切换、清理与 Phase 0 验收 | 通过 | Claude | 2026-09-12 | 2026-09-12 | 本次提交 | 旧路线项目移除、Debug/Release 184 通过、发布烟雾与产物启动关闭通过；见 `evidence/P0-11-01-phase-0-acceptance.md` |
 
 ## 4. 闸口状态
 
 | 闸口 | 状态 | 自动化证据 | 人工证据 | 结论 |
 |---|---|---|---|---|
-| Gate A：libmpv 控制 | 进行中 | LibMpv 30 测试含真实会话、本地/HTTP 控制、EOF、取消和错误恢复 | 原生文件选择后真实播放、暂停与时间轴 seek | 控制路径已有证据；待正式闸口证据审计，HLS 未单独实测 |
-| Gate B：SDR Render API | 进行中 | Rendering 23 测试含真实 GPU 色块方向、resize、同一 core 重建上下文 | result.mp4 正向显示，暂停画面稳定 | SDR 路线已打通；完整窗口/性能/色彩对比验收未完成 |
-| Gate C：XAML 覆盖与输入 | 进行中 | App 34 测试含 UI 事件派发、浮层保留、seek 竞争与关闭协调 | 原生文件选择、时间轴、媒体信息/轨道、音量/静音、F11/Esc 及正常关闭均已验证 | 完整触屏、DPI/显示器矩阵未完成 |
+| Gate A：libmpv 控制 | 通过 | LibMpv 79 测试含真实会话、本地/HTTP/HLS 控制、EOF、取消、错误恢复、无外部 mpv、日志脱敏 | MVP GUI 与 RTX 3070 三轮真实播放、暂停、时间轴 seek、EOF、错误恢复 | 2026-09-12 P0-11 审计通过 |
+| Gate B：SDR Render API | 通过 | Rendering 49 测试含真实 GPU 色块方向、resize、同一 core 重建上下文、渲染连续性、10-bit/FP16 精度、应用内 5 场景恢复 | result.mp4 正向显示；RTX 3070 全屏 3840×2160、4K60 59.94 fps、150% DPI 表面等于物理客户区、28 次尺寸切换 | 2026-09-12 P0-11 审计通过；SDR 色彩无仪器对照 |
+| Gate C：XAML 覆盖与输入 | 通过（范围内） | App 54 测试含 UI 事件派发、浮层保留、seek 竞争、关闭协调、终态命令拒绝 | 鼠标、键盘、时间轴、双击全屏、F11/Esc、150% DPI（两台机器）、单显示器 | 真实触屏、100%/125%/200% DPI、双显示器未验证 |
 | Gate D：4K、硬件解码与 HDR | 通过（范围内） | Debug/Release 各 187 通过、4 项素材驱动测试按环境跳过；真实 HEVC 4K10 硬解、AV1 软件回退、10-bit/FP16 精度、PQ 梯度、渲染连续性通过 | 2026-09-12 RTX 3070 三轮：HDR 开/关与播放中切换、HEVC MP4/TS 硬解、PQ 输出、PerMonitorV2 下 3840×2160 表面 59.94 fps、EOF 面板保留、正常退出；视觉为用户目视；见 `evidence/P0-10-01`、`P0-10-02` | 跨屏与长时间稳定性按用户决定不在本阶段验证；视觉无截图 |
 
 ## 5. 外部输入与阻塞项
@@ -101,7 +101,7 @@ dotnet build mpv-winui.slnx -p:Platform=x64 --no-restore
 
 说明：EXT-01、EXT-02、EXT-03、EXT-04、EXT-05 已有明确来源或实现策略；P0-02 的四个 DLL 全部来自仓库锁定的构建流程，没有来源不明的运行时资产。
 
-Gate A～C 已进入实现和验证阶段，但尚未完成逐项正式验收；Gate D 于 2026-09-12 在单显示器、短时段、用户目视范围内通过。当前不宣布完整 Phase 0 通过。
+2026-09-12 P0-11 完成 Gate A～D 逐项审计：Gate A、B 通过，Gate C、D 在已声明范围内通过。Phase 0 记为「通过（范围内）」，未验证项见 `evidence/P0-11-01-phase-0-acceptance.md`；这些项目不阻塞 Phase 1 开始，但应在 Phase 1 早期补齐。
 
 ## 6. 验证记录
 
@@ -199,6 +199,7 @@ Gate A～C 已进入实现和验证阶段，但尚未完成逐项正式验收；
 | `P0-06-01-d3d11-swapchain-baseline.md` | P0-06 | 2026-08-29 | 通过 |
 | `P0-10-01-rtx3070-hdr-acceptance.md` | P0-10 / Gate D | 2026-09-12 | 部分通过：HDR 开关/切换、硬解、退出通过；DPI 不感知已修待复测，跨屏未验证 |
 | `P0-10-02-rtx3070-dpi-4k-retest.md` | P0-10 / Gate D | 2026-09-12 | 通过：PerMonitorV2 生效，4K 表面 59.94 fps，EOF 面板保留；跨屏与长时间按用户决定不验证 |
+| `P0-11-01-phase-0-acceptance.md` | P0-11 / Gate A～D | 2026-09-12 | Phase 0 范围内通过：旧路线移除、184 测试、发布烟雾与产物运行；触屏/其他 DPI/双显示器/长时间未验证 |
 
 ## 10. 更新规则
 

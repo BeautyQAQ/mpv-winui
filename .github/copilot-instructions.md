@@ -45,7 +45,7 @@ tests/
 
 依赖方向：`App → Player.Abstractions`、`App → Rendering.WinUI`、`Player.LibMpv → Player.Abstractions`，且控制后端与渲染器共享同一份 mpv core。`Player.Abstractions` 不得引用 WinUI、ANGLE、D3D11 或 libmpv。
 
-仓库当前仍可能存在 `MpvShell.Player.MpvSidecar`、`MpvShell.Interop.VideoHost` 及其测试。这些是待迁移的旧路线，不是新功能的落点，不得继续扩展；完成对应替代后再安全移除。
+旧路线项目 `MpvShell.Player.MpvSidecar`、`MpvShell.Interop.VideoHost` 及其测试已于 2026-09-12（P0-11）移除；不得重新引入外部 mpv 进程、JSON IPC 或 `--wid` 承载。
 
 ## 架构规则（必须遵守）
 

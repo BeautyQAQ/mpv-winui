@@ -15,7 +15,7 @@
 - `MpvRenderContext` 限定渲染线程，持有 core 租约，先于会话销毁。
 - ANGLE 与 SwapChain 共享 D3D11 device；直接导入后备纹理作为 EGL pbuffer，生产渲染不使用 CPU 逐帧读回。
 - 独立渲染线程处理帧更新、resize、DPI 与资源释放，UI 线程只绑定/解绑面板。
-- App 已注册新后端并移除对旧 Sidecar/VideoHost 的活动项目引用；旧项目暂留解决方案供历史测试使用。
+- App 已注册新后端并移除对旧 Sidecar/VideoHost 的活动项目引用；旧项目已于 2026-09-12 P0-11 从仓库与解决方案移除。
 - 文件选择/媒体地址、时间轴、播放暂停、音量静音、轨道/信息、全屏、UI 事件调度与关闭协调。
 
 ## 测试素材
@@ -77,7 +77,7 @@ dotnet test mpv-winui.slnx -c Release -p:Platform=x64 --no-build --no-restore
 ## 已知限制
 
 - 当前默认软件解码；HDR 与 4K 硬解按用户安排延后，未完成硬件验收。
-- HLS 尚未单独实测，现有 HTTP/Range 结果不能代替 HLS 验证。
+- HLS 已于 2026-09-12 通过本机播放列表集成测试验证（`LibMpvHlsTests`）；自适应码率切换未在范围内。
 - “最近打开”保存在当前进程内，重启应用后不保留。
 - 全 DPI、真实触屏和多 GPU/显示器矩阵尚未验收；当前色块测试证明方向与基本色彩正确，不能作为 HDR 或完整色彩管理结论。
 
