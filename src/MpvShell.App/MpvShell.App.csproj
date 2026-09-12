@@ -8,6 +8,8 @@
     <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <Nullable>enable</Nullable>
+    <!-- 未打包应用必须自行声明 PerMonitorV2；否则在 150% 缩放的 4K 屏上视频表面只有 2560×1440。 -->
+    <ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>
 
   <ItemGroup>

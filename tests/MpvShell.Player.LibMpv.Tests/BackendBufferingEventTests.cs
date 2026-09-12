@@ -256,6 +256,34 @@ public sealed class BackendBufferingEventTests
         ended.OfType<PlaybackStateChanged>().Last().State.PositionSeconds.Should().Be(7.967);
     }
 
+    [Fact]
+    public async Task Eof_should_keep_the_last_known_media_info_until_the_next_file_starts()
+    {
+        // mpv 在 EndFile 之前卸载视频链，把 video-params、hwdec-current 等逐项清成 null。
+        await using var events = new BackendEvents();
+        events.StartMedia();
+        events.Publish(new(MpvEventId.PropertyChange, "video-codec", "hevc"));
+        events.Publish(new(MpvEventId.PropertyChange, "hwdec-current", "d3d11va"));
+        events.Publish(new(MpvEventId.PropertyChange, "frame-drop-count", 15L));
+        events.Publish(new(MpvEventId.PropertyChange, "video-params",
+            new Dictionary<string, object?> { ["w"] = 3840L, ["h"] = 2160L, ["gamma"] = "pq", ["pixelformat"] = "d3d11" }));
+        events.Position(1);
+        var loaded = await events.ReadThroughPositionAsync(1);
+        loaded.OfType<MediaInfoChanged>().Last().Snapshot.Resolution.Should().Be("3840 × 2160");
+
+        events.Publish(new(MpvEventId.PropertyChange, "video-params", null));
+        events.Publish(new(MpvEventId.PropertyChange, "video-codec", null));
+        events.Publish(new(MpvEventId.PropertyChange, "hwdec-current", null));
+        events.Publish(new(MpvEventId.PropertyChange, "frame-drop-count", null));
+        events.Publish(new(MpvEventId.EndFile, Value: 0));
+        var ended = await events.ReadUntilAsync(item => item is EndReached, "EndReached");
+        ended.OfType<MediaInfoChanged>().Should().BeEmpty("clearing properties at EOF must not downgrade the panel");
+
+        events.Publish(new(MpvEventId.StartFile));
+        var restarted = await events.ReadUntilAsync(item => item is MediaInfoChanged, "MediaInfoChanged after StartFile");
+        restarted.OfType<MediaInfoChanged>().Single().Snapshot.Resolution.Should().BeNull("a new file starts from an empty panel");
+    }
+
     private sealed class BackendEvents : IAsyncDisposable
     {
         private readonly CancellationTokenSource _timeout = new(TimeSpan.FromSeconds(10));

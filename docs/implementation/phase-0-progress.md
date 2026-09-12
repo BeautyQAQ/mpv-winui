@@ -1,8 +1,8 @@
 # Phase 0 实施进度
 
-> 总体状态：进行中（SDR MVP 已完成；HDR/4K 本轮 Debug/Release 各 138/138 测试通过，屏幕与完整 Phase 0 闸口尚未验收）
-> 当前阶段：P0-10 HDR/4K 硬解实施与自动化验证；用户安排晚间进行显示器与交互验收
-> 最后更新：2026-09-11
+> 总体状态：进行中（SDR MVP 已完成；HDR/4K 已在 RTX 3070 完成首轮屏幕验收，DPI 修复待复测，跨屏与完整 Phase 0 闸口尚未验收）
+> 当前阶段：P0-10 HDR/4K 外机复测（DPI 感知、4K 原尺寸表面）
+> 最后更新：2026-09-12
 > 架构基线：`docs/architecture.md` v1.1  
 > 执行计划：`docs/implementation/phase-0-plan.md`
 
@@ -75,7 +75,7 @@ dotnet build mpv-winui.slnx -p:Platform=x64 --no-restore
 | P0-07 ANGLE/EGL 与 OpenGL FBO | 进行中 | Codex | 2026-09-10 |  |  | D3D11 纹理直接导入 EGL pbuffer；真实 GPU 色块、resize 和上下文重建通过 |
 | P0-08 Render API SDR 集成 | 进行中 | Codex | 2026-09-10 |  |  | Gate B：用户视频正向进入 SwapChainPanel；软件解码 SDR、暂停和 seek 已实测，完整性能/色彩与窗口矩阵待验收 |
 | P0-09 覆盖层、输入与生命周期 | 进行中 | Codex | 2026-09-10 |  |  | Gate C：文件选择、暂停、时间轴、轨道/信息覆盖层已实测；UI 派发和关闭竞争测试通过，完整输入/显示器矩阵待验收 |
-| P0-10 4K、硬解和 HDR 验证 | 待人工验证 | Codex | 2026-09-11 |  |  | 实际 HEVC 4K 硬解、AV1 回退、PQ 输出像素与 Debug/Release 回归通过；详见 `hdr-4k-progress.md`，真实屏幕与长时间性能矩阵待晚间验收 |
+| P0-10 4K、硬解和 HDR 验证 | 待人工验证 | Codex | 2026-09-11 |  |  | RTX 3070 首轮屏幕验收部分通过（HDR 开关/切换、硬解、退出）；DPI 不感知已修待复测，跨屏与长时间未验收；详见 `hdr-4k-progress.md` 与 `evidence/P0-10-01-rtx3070-hdr-acceptance.md` |
 | P0-11 切换、清理与 Phase 0 验收 | 未开始 |  |  |  |  | 仅 Gate A～D 全部通过后开始 |
 
 ## 4. 闸口状态
@@ -85,7 +85,7 @@ dotnet build mpv-winui.slnx -p:Platform=x64 --no-restore
 | Gate A：libmpv 控制 | 进行中 | LibMpv 30 测试含真实会话、本地/HTTP 控制、EOF、取消和错误恢复 | 原生文件选择后真实播放、暂停与时间轴 seek | 控制路径已有证据；待正式闸口证据审计，HLS 未单独实测 |
 | Gate B：SDR Render API | 进行中 | Rendering 23 测试含真实 GPU 色块方向、resize、同一 core 重建上下文 | result.mp4 正向显示，暂停画面稳定 | SDR 路线已打通；完整窗口/性能/色彩对比验收未完成 |
 | Gate C：XAML 覆盖与输入 | 进行中 | App 34 测试含 UI 事件派发、浮层保留、seek 竞争与关闭协调 | 原生文件选择、时间轴、媒体信息/轨道、音量/静音、F11/Esc 及正常关闭均已验证 | 完整触屏、DPI/显示器矩阵未完成 |
-| Gate D：4K、硬件解码与 HDR | 待人工验证 | Debug/Release 各 138/138；真实 HEVC 4K10 硬解、AV1 软件回退、10-bit/FP16 精度及 PQ 梯度通过 | 当前 Windows HDR 关闭；HDR 开启、视觉效果与跨屏待晚间测试 | 自动化已完成当前范围；长时间性能、显示器矩阵和 AV1 硬解设备覆盖仍未验收 |
+| Gate D：4K、硬件解码与 HDR | 待人工验证 | Debug/Release 各 187 通过、4 项素材驱动测试按环境跳过；真实 HEVC 4K10 硬解、AV1 软件回退、10-bit/FP16 精度、PQ 梯度、渲染连续性通过 | 2026-09-12 RTX 3070：HDR 开/关与播放中切换、HEVC MP4 硬解、PQ 输出、退出通过（用户目视）；见 `evidence/P0-10-01-rtx3070-hdr-acceptance.md` | 应用此前 DPI 不感知，4K 原尺寸表面未验证（已修待复测）；跨屏、长时间稳定性未验收 |
 
 ## 5. 外部输入与阻塞项
 
@@ -145,6 +145,8 @@ Gate A～C 已进入实现和验证阶段，但尚未完成逐项正式验收；
 | 2026-09-10 | SDR MVP 发布 | Release win-x64，.NET/WinUI 自包含 | `build/testing/publish-mvp.ps1`，从最终目录运行应用并播放 result.mp4 | 通过：四 DLL 哈希/x64/加载/API2.5、三次会话创建销毁；GUI 正向播放到23秒并暂停 | `artifacts/mvp/win-x64/publish-verification.json`、`artifacts/mvp/evidence/release-playback.jpg` | MVP 已完成；不代表 P0-11 清理或 Gate D 已验收 |
 | 2026-09-11 | P0-10 实施与回归 | .NET SDK 10.0.401，Windows x64，GTX 1060 5GB | Debug/Release 全量 build/test，显式提供三份固定 4K 素材 | 两种配置均 0 警告/错误，各 138/138，无跳过 | `artifacts/hdr-4k/evidence/`、`test-results/`、`hardware-reports/`；详情见 `hdr-4k-progress.md` | HEVC Main10 GPU 纹理硬解、AV1 软件回退、10-bit/FP16 精度及 PQ 梯度通过，屏幕验收待进行 |
 | 2026-09-11 | P0-10 测试包 | Release win-x64，.NET/WinUI 自包含 | `publish-mvp.ps1 -OutputDirectory artifacts/hdr-4k/win-x64 -NoRestore` | 四 DLL 哈希/x64/加载/API2.5、3 次会话与 35 份许可证原文哈希通过 | `artifacts/hdr-4k/win-x64/publish-verification.json` | 独立目录保留旧 SDR MVP；尚不代表完整 Gate D 通过 |
+| 2026-09-12 | P0-10 外机验收 | RTX 3070，Windows 11 26200，GB27V1 4K 120 Hz，Windows HDR 开/关 | 测试包 7f8d613，用户按 8 步顺序验收；日志 MpvShell-RTX3070-Logs-20260912-101312-01da9b11.zip | 部分通过：0 次渲染等待超时、EOF 对齐、HDR 三路径与硬解通过；DPI 不感知致表面最大 2560×1440 | docs/implementation/evidence/P0-10-01-rtx3070-hdr-acceptance.md、rtifacts/rtx3070-analysis/101312-01da9b11/分析报告.md | 已加 PerMonitorV2 清单待复测；跨屏未验证 |
+| 2026-09-12 | P0-10 TS 对照 | GTX 1060，本机，同一 LG TS 文件与 17 个目标 | TsSeekDecodePathComparisonTests（MPVSHELL_TEST_TS_MEDIA） | 硬解与软解逐次 seek 错误组完全一致（各 430）；顺播 0 错误 | rtifacts/rtx3070-analysis/101312-01da9b11/local-ts-comparison/ | 定性为 MPEG-TS 随机访问行为，不改解码路径 |
 
 ## 7. 技术决策记录
 
@@ -194,6 +196,7 @@ Gate A～C 已进入实现和验证阶段，但尚未完成逐项正式验收；
 | `P0-01-01-project-boundaries.md` | P0-01 | 2026-08-28 | 通过 |
 | `P0-02-01-native-dependency-loading.md` | P0-02 | 2026-08-30 | 通过 |
 | `P0-06-01-d3d11-swapchain-baseline.md` | P0-06 | 2026-08-29 | 通过 |
+| `P0-10-01-rtx3070-hdr-acceptance.md` | P0-10 / Gate D | 2026-09-12 | 部分通过：HDR 开关/切换、硬解、退出通过；DPI 不感知已修待复测，跨屏未验证 |
 
 ## 10. 更新规则
 

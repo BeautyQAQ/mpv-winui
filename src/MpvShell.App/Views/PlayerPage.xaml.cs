@@ -190,8 +190,9 @@ public sealed partial class PlayerPage : Page
         if (!_ready || VideoSurface.ActualWidth <= 0 || VideoSurface.ActualHeight <= 0) return;
         try
         {
+            // UIElement.RasterizationScale 是元素级额外缩放，默认恒为 1.0；显示器 DPI 缩放只有 XamlRoot 才知道。
             await _videoSurfaceRenderer.ResizeAsync(new VideoSurfaceSize(
-                VideoSurface.ActualWidth, VideoSurface.ActualHeight, VideoSurface.RasterizationScale), CancellationToken.None);
+                VideoSurface.ActualWidth, VideoSurface.ActualHeight, VideoSurface.XamlRoot?.RasterizationScale ?? 1.0), CancellationToken.None);
         }
         catch (Exception ex) { ViewModel.ReportError($"调整视频尺寸失败：{ex.Message}"); }
     }

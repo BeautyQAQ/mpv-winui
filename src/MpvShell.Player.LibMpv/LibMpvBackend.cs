@@ -229,12 +229,21 @@ public sealed class LibMpvBackend : IPlayerBackend
                     break;
                 case MpvEventId.PropertyChange when playerEvent.Property is not null:
                     if (_awaitingStart && playerEvent.Property is not ("pause" or "volume" or "mute")) break;
+                    // 媒体播放到结尾时 mpv 先卸载视频链，把 video-params、hwdec-current 等逐项清成 null，
+                    // 然后才发 EndFile。保留最后一次已知的媒体信息与丢帧计数，直到下一次 StartFile 重置。
+                    if (playerEvent.Value is null && IsMediaInfoProperty(playerEvent.Property)
+                        && _properties.TryGetValue(playerEvent.Property, out var known) && known is not null)
+                        break;
                     _properties[playerEvent.Property] = playerEvent.Value;
                     UpdateProperty(playerEvent.Property, playerEvent.Value);
                     break;
             }
         }
     }
+
+    private static bool IsMediaInfoProperty(string property) => property is "video-params" or "video-codec"
+        or "audio-codec-name" or "estimated-vf-fps" or "container-fps" or "cache-buffering-state" or "hwdec-current"
+        or "hwdec-interop" or "decoder-frame-drop-count" or "frame-drop-count";
 
     private void UpdateProperty(string property, object? value)
     {

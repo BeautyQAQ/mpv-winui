@@ -105,8 +105,9 @@ public sealed partial class D3D11VideoSurfaceRenderer : IVideoSurfaceRenderer
 
             await OnUiAsync(dispatcher, () =>
             {
+                // 元素级 RasterizationScale 默认恒为 1.0；显示器 DPI 缩放来自 XamlRoot，否则表面只有逻辑像素大小。
                 lock (_resizeGate)
-                    _requestedSize = new VideoSurfaceSize(surface.ActualWidth, surface.ActualHeight, surface.RasterizationScale);
+                    _requestedSize = new VideoSurfaceSize(surface.ActualWidth, surface.ActualHeight, surface.XamlRoot?.RasterizationScale ?? 1.0);
             }).ConfigureAwait(false);
 
             nint swapChainPointer = 0;
