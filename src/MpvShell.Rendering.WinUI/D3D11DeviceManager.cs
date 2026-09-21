@@ -31,11 +31,15 @@ internal sealed class D3D11DeviceManager : IDisposable
         // 创建 D3D11 设备（使用硬件适配器）。
         var creationFlags = DeviceCreationFlags.BgraSupport;
 #if DEBUG
-        if (D3D11.SdkLayersAvailable())
+        // 调试层会校验 ANGLE 发出的每一次 D3D 调用，对 4K 逐帧渲染的吞吐影响很大。
+        // Debug 构建默认保留它以发现资源错误；性能对照运行可用 MPVSHELL_D3D11_DEBUG_LAYER=0 关闭，
+        // 以便在同一构建配置下区分"托管 Debug 开销"与"调试层开销"。Release 从不启用。
+        if (IsDebugLayerRequested(Environment.GetEnvironmentVariable("MPVSHELL_D3D11_DEBUG_LAYER")) && D3D11.SdkLayersAvailable())
         {
             creationFlags |= DeviceCreationFlags.Debug;
         }
 #endif
+        IsDebugLayerEnabled = (creationFlags & DeviceCreationFlags.Debug) != 0;
 
         _dxgiFactory = DXGI.CreateDXGIFactory1<IDXGIFactory2>();
 
@@ -81,11 +85,27 @@ internal sealed class D3D11DeviceManager : IDisposable
         _adapter = _dxgiDevice.GetParent<IDXGIAdapter>();
 
         var description = _adapter.Description;
+        AdapterDescription = description.Description;
+        IsWarpDevice = hardwareResult.Failure;
         Trace.WriteLine($"[D3D11DeviceManager] D3D11 已初始化；设备 {description.Description}；" +
             $"Vendor=0x{description.VendorId:X4} Device=0x{description.DeviceId:X4}；" +
             $"专用显存 {(ulong)description.DedicatedVideoMemory / (1024 * 1024)} MiB；" +
-            $"驱动类型 {(hardwareResult.Failure ? "WARP" : "Hardware")}；创建标志 {creationFlags}。");
+            $"驱动类型 {(hardwareResult.Failure ? "WARP" : "Hardware")}；创建标志 {creationFlags}；" +
+            $"调试层 {(IsDebugLayerEnabled ? "已启用" : "未启用")}。");
     }
+
+    /// <summary>设备创建时是否实际带有 D3D11 调试层；性能记录必须登记该状态。</summary>
+    public bool IsDebugLayerEnabled { get; private set; }
+
+    /// <summary>是否回退到了 WARP 软件设备。</summary>
+    public bool IsWarpDevice { get; private set; }
+
+    /// <summary>DXGI 适配器描述，例如显卡型号；初始化前为 null。</summary>
+    public string? AdapterDescription { get; private set; }
+
+    /// <summary>仅 Debug 构建使用：MPVSHELL_D3D11_DEBUG_LAYER 为 0/no/false/off 时不请求调试层。</summary>
+    internal static bool IsDebugLayerRequested(string? environmentValue) =>
+        environmentValue?.Trim().ToLowerInvariant() is not ("0" or "no" or "false" or "off");
 
     /// <summary>
     /// 获取 D3D11 设备（适用于 SwapChain 创建）。

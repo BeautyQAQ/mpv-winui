@@ -47,8 +47,9 @@ public sealed partial class D3D11VideoSurfaceRenderer : IVideoSurfaceRenderer
     private long _presentedFrames;
     private long _skippedFrames;
     private long _frameWakeTimestamp;
-    private double _maximumRenderMilliseconds;
-    private double _maximumPresentMilliseconds;
+    // 全局累计（跨窗口）用于日志分段；_statistics 是可由调用方重置的测量窗口。
+    private readonly RenderStatisticsCollector _logSegment = new(sampleCapacity: 512);
+    private readonly RenderStatisticsCollector _statistics = new();
 
     /// <summary>可能从后台线程触发；订阅方自行通过 DispatcherQueue 更新 UI。</summary>
     public event Action<string>? RenderingFailed;
@@ -328,7 +329,8 @@ public sealed partial class D3D11VideoSurfaceRenderer : IVideoSurfaceRenderer
 #if DEBUG
             _testGraphicsGeneration++;
 #endif
-            Log($"渲染初始化完成：{_angle.Description}；{_activeOutput.Format}，{size.PhysicalWidth}×{size.PhysicalHeight}。");
+            Log($"渲染初始化完成：{_angle.Description}；{_activeOutput.Format}，{size.PhysicalWidth}×{size.PhysicalHeight}；" +
+                $"D3D11 调试层{(_deviceManager.IsDebugLayerEnabled ? "已启用（性能数据不代表发布构建）" : "未启用")}。");
         }
         catch
         {
@@ -390,16 +392,47 @@ public sealed partial class D3D11VideoSurfaceRenderer : IVideoSurfaceRenderer
 #if DEBUG
         _testPresented?.Invoke();
 #endif
-        _maximumRenderMilliseconds = Math.Max(_maximumRenderMilliseconds, Stopwatch.GetElapsedTime(renderStart, presentStart).TotalMilliseconds);
-        _maximumPresentMilliseconds = Math.Max(_maximumPresentMilliseconds, Stopwatch.GetElapsedTime(presentStart, presentEnd).TotalMilliseconds);
+        var renderMilliseconds = Stopwatch.GetElapsedTime(renderStart, presentStart).TotalMilliseconds;
+        var presentMilliseconds = Stopwatch.GetElapsedTime(presentStart, presentEnd).TotalMilliseconds;
+        double? wakeMilliseconds = wakeTimestamp > 0 ? Stopwatch.GetElapsedTime(wakeTimestamp, presentEnd).TotalMilliseconds : null;
+        _logSegment.RecordPresented(renderMilliseconds, presentMilliseconds, wakeMilliseconds);
+        _statistics.RecordPresented(renderMilliseconds, presentMilliseconds, wakeMilliseconds);
         _presentedFrames++;
         if (_presentedFrames == 1 || _presentedFrames % 300 == 0)
         {
-            var delay = wakeTimestamp > 0 ? Stopwatch.GetElapsedTime(wakeTimestamp, presentEnd).TotalMilliseconds : 0;
-            Log($"已呈现 {_presentedFrames} 帧，{_currentSize.PhysicalWidth}×{_currentSize.PhysicalHeight}；" +
-                $"{_activeOutput.Format}；本段最大 Render {_maximumRenderMilliseconds:0.00} ms / Present {_maximumPresentMilliseconds:0.00} ms；最近回调至呈现 {delay:0.00} ms；累计跳过呈现 {_skippedFrames} 帧。");
-            _maximumRenderMilliseconds = _maximumPresentMilliseconds = 0;
+            // 分段统计不是采样：每帧都计入，只是每 300 帧写一次日志。呈现 fps 按本段墙钟时间计算，
+            // 暂停或无新帧时段会拉低它，判断吞吐时需结合媒体是否处于连续播放。
+            var segment = _logSegment.Snapshot(reset: true);
+            Log($"已呈现 {_presentedFrames} 帧，{_currentSize.PhysicalWidth}×{_currentSize.PhysicalHeight}；{_activeOutput.Format}；" +
+                $"本段 {segment}；累计跳过呈现 {_skippedFrames} 帧。");
         }
+    }
+
+    /// <summary>
+    /// 读取当前测量窗口的呈现统计；<paramref name="reset"/> 为 true 时从此刻开始新的窗口。
+    /// 统计在渲染线程内累计，不做 CPU 像素读回，不改变呈现节奏，可用于 Release 自然播放测量。
+    /// </summary>
+    public async ValueTask<RenderStatisticsSnapshot> GetStatisticsAsync(bool reset, CancellationToken cancellationToken)
+    {
+        var worker = _worker ?? throw new InvalidOperationException("必须先初始化渲染器。");
+        RenderStatisticsSnapshot? snapshot = null;
+        await worker.InvokeAsync(() => snapshot = _statistics.Snapshot(reset), cancellationToken).ConfigureAwait(false);
+        return snapshot!;
+    }
+
+    /// <summary>当前图形设备的环境信息；性能记录必须登记调试层与适配器，初始化前为 null。</summary>
+    public async ValueTask<RenderDeviceInfo?> GetDeviceInfoAsync(CancellationToken cancellationToken)
+    {
+        var worker = _worker ?? throw new InvalidOperationException("必须先初始化渲染器。");
+        RenderDeviceInfo? info = null;
+        await worker.InvokeAsync(() =>
+        {
+            if (_deviceManager is null) return;
+            info = new RenderDeviceInfo(_deviceManager.AdapterDescription, _deviceManager.IsDebugLayerEnabled,
+                _deviceManager.IsWarpDevice, _angle?.Description, _activeOutput.Format.ToString(),
+                _currentSize.PhysicalWidth, _currentSize.PhysicalHeight);
+        }, cancellationToken).ConfigureAwait(false);
+        return info;
     }
 
     /// <summary>
@@ -415,6 +448,8 @@ public sealed partial class D3D11VideoSurfaceRenderer : IVideoSurfaceRenderer
         _renderContext.Skip();
         _renderContext.ReportSwap();
         _skippedFrames++;
+        _logSegment.RecordSkipped();
+        _statistics.RecordSkipped();
         _forceRedraw = true;
     }
 

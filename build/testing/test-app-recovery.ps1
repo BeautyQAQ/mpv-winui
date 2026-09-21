@@ -4,10 +4,18 @@ param(
     [string] $MediaPath,
     [string] $ReportDirectory,
     [ValidateNotNullOrEmpty()]
-    [ValidateSet('playing', 'paused', 'immediate-failure', 'rebuild-failure', 'resize', 'playback')]
+    [ValidateSet('playing', 'paused', 'immediate-failure', 'rebuild-failure', 'resize', 'playback', 'performance')]
     [string[]] $Mode = @('playing', 'paused', 'immediate-failure', 'rebuild-failure', 'resize'),
     [string] $AppPath,
-    [switch] $NoBuild
+    [switch] $NoBuild,
+    # 以下仅影响 performance 模式：预热秒数、稳态窗口秒数。
+    [ValidateRange(0, 600)] [double] $WarmupSeconds = 3,
+    [ValidateRange(1, 600)] [double] $SteadySeconds = 30,
+    # Auto：Debug 应用按默认行为启用 D3D11 调试层（若已安装 Graphics Tools）；Off：通过 MPVSHELL_D3D11_DEBUG_LAYER=0 关闭，
+    # 用于在同一 Debug 构建下对照调试层开销。Release 应用不含探针，此开关对其无意义。
+    [ValidateSet('Auto', 'Off')] [string] $D3D11DebugLayer = 'Auto',
+    # 单个应用进程的限时；performance 模式会按预热与窗口自动放宽。
+    [ValidateRange(30, 3600)] [int] $TimeoutSeconds = 90
 )
 
 Set-StrictMode -Version Latest
@@ -90,68 +98,82 @@ if (-not (Test-Path -LiteralPath $AppPath -PathType Leaf)) {
 }
 $AppPath = (Resolve-Path -LiteralPath $AppPath).Path
 $results = [Collections.Generic.List[object]]::new()
-
-foreach ($scenario in $Mode) {
-    $reportPath = Join-Path $ReportDirectory ($scenario + '-' + [Guid]::NewGuid().ToString('N') + '.json')
-    $process = $null
-    $exitCode = $null
-    $failure = $null
-    $reportStatus = $null
-    $shutdownCompleted = $null
-    $timer = [Diagnostics.Stopwatch]::StartNew()
-    try {
-        # Start-Process joins ArgumentList on Windows, so quote entire path-bearing arguments.
-        $arguments = @(
-            ('"{0}"' -f $MediaPath),
-            ('"--recovery-test-report={0}"' -f $reportPath),
-            ('--recovery-test-mode={0}' -f $scenario)
-        )
-        if ($generatedMedia) { $arguments += '--recovery-test-animated-pattern' }
-        Write-Host "运行应用恢复验证：$scenario；视频：$MediaPath"
-        # This is the actual interactive test app, not a background helper: it needs
-        # a visible SwapChainPanel and an interactive Windows desktop for rendering.
-        $process = Start-Process -FilePath $AppPath -ArgumentList $arguments `
-            -WorkingDirectory ([IO.Path]::GetDirectoryName($AppPath)) -PassThru
-        if (-not $process.WaitForExit(90000)) {
-            # Keep the process handle so only this test-created process is terminated.
-            $process.Kill()
-            [void] $process.WaitForExit(5000)
-            throw '应用恢复验证超过 90 秒；已终止本次测试启动的应用进程。'
+$previousDebugLayer = $env:MPVSHELL_D3D11_DEBUG_LAYER
+if ($D3D11DebugLayer -eq 'Off') { $env:MPVSHELL_D3D11_DEBUG_LAYER = '0' }
+try {
+    foreach ($scenario in $Mode) {
+        $reportPath = Join-Path $ReportDirectory ($scenario + '-' + [Guid]::NewGuid().ToString('N') + '.json')
+        $process = $null
+        $exitCode = $null
+        $failure = $null
+        $reportStatus = $null
+        $shutdownCompleted = $null
+        $timer = [Diagnostics.Stopwatch]::StartNew()
+        $limitSeconds = $TimeoutSeconds
+        if ($scenario -eq 'performance') {
+            $limitSeconds = [Math]::Max($TimeoutSeconds, [int][Math]::Ceiling($WarmupSeconds + $SteadySeconds + 60))
         }
-        $exitCode = $process.ExitCode
-        if (-not (Test-Path -LiteralPath $reportPath -PathType Leaf)) {
-            throw "应用未写出恢复报告（进程退出码 $exitCode）；请确认使用支持恢复验证参数的 Debug 版本。"
+        try {
+            # Start-Process joins ArgumentList on Windows, so quote entire path-bearing arguments.
+            $arguments = @(
+                ('"{0}"' -f $MediaPath),
+                ('"--recovery-test-report={0}"' -f $reportPath),
+                ('--recovery-test-mode={0}' -f $scenario)
+            )
+            if ($generatedMedia) { $arguments += '--recovery-test-animated-pattern' }
+            if ($scenario -eq 'performance') {
+                $arguments += ('--recovery-test-warmup-seconds={0}' -f $WarmupSeconds.ToString([Globalization.CultureInfo]::InvariantCulture))
+                $arguments += ('--recovery-test-seconds={0}' -f $SteadySeconds.ToString([Globalization.CultureInfo]::InvariantCulture))
+            }
+            Write-Host "运行应用恢复验证：$scenario；视频：$MediaPath；调试层：$D3D11DebugLayer；限时 $limitSeconds 秒"
+            # This is the actual interactive test app, not a background helper: it needs
+            # a visible SwapChainPanel and an interactive Windows desktop for rendering.
+            $process = Start-Process -FilePath $AppPath -ArgumentList $arguments `
+                -WorkingDirectory ([IO.Path]::GetDirectoryName($AppPath)) -PassThru
+            if (-not $process.WaitForExit($limitSeconds * 1000)) {
+                # Keep the process handle so only this test-created process is terminated.
+                $process.Kill()
+                [void] $process.WaitForExit(5000)
+                throw "应用验证超过 $limitSeconds 秒；已终止本次测试启动的应用进程。"
+            }
+            $exitCode = $process.ExitCode
+            if (-not (Test-Path -LiteralPath $reportPath -PathType Leaf)) {
+                throw "应用未写出恢复报告（进程退出码 $exitCode）；请确认使用支持恢复验证参数的 Debug 版本。"
+            }
+            $report = Get-Content -LiteralPath $reportPath -Raw | ConvertFrom-Json -AsHashtable
+            $reportStatus = $report['Status']
+            $shutdownCompleted = $report['ShutdownCompleted']
+            if ($reportStatus -ne 'Passed') {
+                $detail = if ($report.ContainsKey('Error')) { $report['Error'] } else { '缺少 Passed 状态。' }
+                throw "应用报告恢复验证失败：$detail"
+            }
+            if ($shutdownCompleted -isnot [bool] -or -not $shutdownCompleted) {
+                throw '应用未确认完整释放播放会话和渲染资源：报告须包含 ShutdownCompleted=true。'
+            }
+            if ($exitCode -ne 0) { throw "应用报告通过，但进程退出码为 $exitCode。" }
         }
-        $report = Get-Content -LiteralPath $reportPath -Raw | ConvertFrom-Json -AsHashtable
-        $reportStatus = $report['Status']
-        $shutdownCompleted = $report['ShutdownCompleted']
-        if ($reportStatus -ne 'Passed') {
-            $detail = if ($report.ContainsKey('Error')) { $report['Error'] } else { '缺少 Passed 状态。' }
-            throw "应用报告恢复验证失败：$detail"
+        catch {
+            $failure = $_.Exception.Message
+            Write-Warning "$scenario 验证失败：$failure"
         }
-        if ($shutdownCompleted -isnot [bool] -or -not $shutdownCompleted) {
-            throw '应用未确认完整释放播放会话和渲染资源：报告须包含 ShutdownCompleted=true。'
+        finally {
+            $timer.Stop()
+            if ($null -ne $process) { $process.Dispose() }
         }
-        if ($exitCode -ne 0) { throw "应用报告通过，但进程退出码为 $exitCode。" }
+        $results.Add([ordered]@{
+            Mode = $scenario
+            Passed = $null -eq $failure
+            ExitCode = $exitCode
+            ReportStatus = $reportStatus
+            ShutdownCompleted = $shutdownCompleted
+            Error = $failure
+            DurationSeconds = [Math]::Round($timer.Elapsed.TotalSeconds, 3)
+            ReportPath = $reportPath
+        })
     }
-    catch {
-        $failure = $_.Exception.Message
-        Write-Warning "$scenario 验证失败：$failure"
-    }
-    finally {
-        $timer.Stop()
-        if ($null -ne $process) { $process.Dispose() }
-    }
-    $results.Add([ordered]@{
-        Mode = $scenario
-        Passed = $null -eq $failure
-        ExitCode = $exitCode
-        ReportStatus = $reportStatus
-        ShutdownCompleted = $shutdownCompleted
-        Error = $failure
-        DurationSeconds = [Math]::Round($timer.Elapsed.TotalSeconds, 3)
-        ReportPath = $reportPath
-    })
+}
+finally {
+    $env:MPVSHELL_D3D11_DEBUG_LAYER = $previousDebugLayer
 }
 
 $summaryPath = Join-Path $ReportDirectory ('summary-' + $runId + '.json')
@@ -160,6 +182,9 @@ $summary = [ordered]@{
     AppPath = $AppPath
     MediaPath = $MediaPath
     GeneratedMedia = $generatedMedia
+    D3D11DebugLayer = $D3D11DebugLayer
+    WarmupSeconds = $WarmupSeconds
+    SteadySeconds = $SteadySeconds
     Results = $results.ToArray()
 }
 $summaryStream = [IO.File]::Open($summaryPath, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write)

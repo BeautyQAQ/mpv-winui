@@ -99,10 +99,13 @@ internal sealed class CompositionSwapChain : IDisposable
         swapChain3.SetColorSpace1(colorSpace);
     }
 
-    public void Present()
+    public void Present() => Present(1);
+
+    /// <summary>产品路径固定 sync interval 1；测量对照可传 0 观察不受 vsync 节流的原始吞吐。</summary>
+    public void Present(uint syncInterval)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        _swapChain!.Present(1, PresentFlags.None).CheckError();
+        _swapChain!.Present(syncInterval, PresentFlags.None).CheckError();
     }
 
     public void Dispose()

@@ -40,11 +40,12 @@ internal sealed class AppRecoveryProbe
         try
         {
             if (!Path.IsPathFullyQualified(reportPath)) throw new ArgumentException("验收报告必须使用绝对路径。");
-            if (mode is not ("playing" or "paused" or "immediate-failure" or "rebuild-failure" or "resize" or "playback")) throw new ArgumentException("未知验收模式。");
+            if (mode is not ("playing" or "paused" or "immediate-failure" or "rebuild-failure" or "resize" or "playback" or "performance")) throw new ArgumentException("未知验收模式。");
             if (!ready) throw new InvalidOperationException(vm.ErrorMessage ?? "播放器初始化未完成。");
             if (string.IsNullOrEmpty(vm.State.CurrentUrl)) throw new InvalidOperationException("验收需要指定媒体。");
             var session = (MpvPlayerSession)playerSession;
             await session.SetPropertyAsync("mute", true, CancellationToken.None);
+            report["Device"] = await renderer.GetDeviceInfoAsync(CancellationToken.None);
             await renderer.SetTestCallbacksAsync(probe.BeforeRender, probe.ReadFrame,
                 probe.OnPresented, () =>
                 {
@@ -56,7 +57,7 @@ internal sealed class AppRecoveryProbe
                 });
             await probe.UntilAsync(() => Interlocked.Read(ref probe._frames) >= 30 && vm.State.PositionSeconds > 0,
                 vm, "等待初始播放帧");
-            var initial = await probe.WaitForImageAsync(renderer, vm, 1, forceRedraw: mode != "playback");
+            var initial = await probe.WaitForImageAsync(renderer, vm, 1, forceRedraw: mode is not ("playback" or "performance"));
             report["Media"] = vm.State.CurrentUrl;
             report["InitialVideo"] = vm.InfoPanel.VideoSummary;
             report["InitialDecode"] = vm.InfoPanel.DecodeSummary;
@@ -67,6 +68,13 @@ internal sealed class AppRecoveryProbe
             if (mode == "playback")
             {
                 await probe.VerifyPlaybackToEndAsync(renderer, session, vm, report, initial);
+                report["Status"] = "Passed";
+                return;
+            }
+
+            if (mode == "performance")
+            {
+                await probe.MeasureNaturalPlaybackAsync(renderer, session, vm, report, arguments);
                 report["Status"] = "Passed";
                 return;
             }
@@ -283,6 +291,9 @@ internal sealed class AppRecoveryProbe
         var changedFrames = 0;
         var nextSampleAt = Math.Max(5, vm.State.PositionSeconds + 5);
         var clock = Stopwatch.StartNew();
+        // 从此刻起的呈现统计与 mpv 计数只描述本次带采样的整段播放；无采样对照见 performance 模式。
+        await renderer.GetStatisticsAsync(reset: true, CancellationToken.None);
+        var countersAtStart = await ReadMpvCountersAsync(session);
         while (vm.State.IsPlaying)
         {
             if (vm.ErrorMessage is not null) throw new InvalidOperationException(vm.ErrorMessage);
@@ -302,6 +313,9 @@ internal sealed class AppRecoveryProbe
             }
             await Task.Delay(100);
         }
+        report["RenderStatistics"] = await renderer.GetStatisticsAsync(reset: false, CancellationToken.None);
+        report["MpvCountersAtStart"] = countersAtStart;
+        report["MpvCountersAtEnd"] = await ReadMpvCountersAsync(session);
         Require(vm.ErrorMessage is null && !vm.IsBuffering && vm.State.PositionSeconds >= duration - 0.5,
             "完整播放应正常结束，并清除缓冲提示。");
         Require(changedFrames >= 2, "完整播放应观察到多个不同时刻的动态图像。");
@@ -310,6 +324,98 @@ internal sealed class AppRecoveryProbe
         report["NaturalPlaybackSeconds"] = clock.Elapsed.TotalSeconds;
         report["ChangedSampleCount"] = changedFrames;
         Stage("自然播放至 EOF，多个间隔画面有变化、解码模式保持不变且没有页面错误");
+    }
+
+    /// <summary>
+    /// 无采样的自然播放测量：预热后在稳态窗口内不做任何 CPU 读回、不强制重绘，只读取渲染线程累计的
+    /// 呈现统计和 mpv 的丢帧计数。窗口结束后才做一次读回确认画面非黑。它不对吞吐设通过条件，
+    /// 判定由证据文档按场景规则进行；参数：--recovery-test-warmup-seconds、--recovery-test-seconds。
+    /// </summary>
+    private async Task MeasureNaturalPlaybackAsync(D3D11VideoSurfaceRenderer renderer, MpvPlayerSession session,
+        PlayerViewModel vm, Dictionary<string, object?> report, string[] arguments)
+    {
+        var warmup = ParseSeconds(GetArgument(arguments, "--recovery-test-warmup-seconds="), 3);
+        var steady = ParseSeconds(GetArgument(arguments, "--recovery-test-seconds="), 30);
+        var duration = vm.State.DurationSeconds;
+        Require(duration > warmup + 1, "性能测量需要时长大于预热秒数的文件。");
+        report["WarmupSeconds"] = warmup;
+        report["RequestedSteadySeconds"] = steady;
+        report["DurationSeconds"] = duration;
+        var decoder = await session.GetPropertyAsync("hwdec-current", CancellationToken.None);
+        await UntilAsync(() => vm.State.PositionSeconds >= warmup, vm, "等待预热结束", timeout: TimeSpan.FromSeconds(warmup + 20));
+
+        var positionStart = Convert.ToDouble(await session.GetPropertyAsync("time-pos", CancellationToken.None));
+        var countersAtStart = await ReadMpvCountersAsync(session);
+        await renderer.GetStatisticsAsync(reset: true, CancellationToken.None);
+        var clock = Stopwatch.StartNew();
+        var endAt = Math.Min(warmup + steady, duration - 0.5);
+        var endedAtEof = false;
+        while (true)
+        {
+            if (vm.ErrorMessage is not null) throw new InvalidOperationException(vm.ErrorMessage);
+            if (!vm.State.IsPlaying) { endedAtEof = true; break; }
+            if (vm.State.PositionSeconds >= endAt) break;
+            if (clock.Elapsed.TotalSeconds > steady + 30) throw new TimeoutException("稳态窗口内媒体位置没有按时推进。");
+            await Task.Delay(100);
+        }
+        var statistics = await renderer.GetStatisticsAsync(reset: false, CancellationToken.None);
+        var wallSeconds = clock.Elapsed.TotalSeconds;
+        var countersAtEnd = await ReadMpvCountersAsync(session);
+        var positionEnd = Convert.ToDouble(await session.GetPropertyAsync("time-pos", CancellationToken.None));
+
+        report["SteadyWindow"] = new
+        {
+            PositionStartSeconds = positionStart, PositionEndSeconds = positionEnd,
+            PositionAdvancedSeconds = positionEnd - positionStart, WallSeconds = wallSeconds, EndedAtEof = endedAtEof,
+            Statistics = statistics, MpvCountersAtStart = countersAtStart, MpvCountersAtEnd = countersAtEnd,
+            VoDroppedFrames = Delta(countersAtStart, countersAtEnd, "VoDroppedFrames"),
+            DecoderDroppedFrames = Delta(countersAtStart, countersAtEnd, "DecoderDroppedFrames"),
+            VoDelayedFrames = Delta(countersAtStart, countersAtEnd, "VoDelayedFrames"),
+            MistimedFrames = Delta(countersAtStart, countersAtEnd, "MistimedFrames"),
+        };
+        report["Output"] = vm.InfoPanel.OutputSummary;
+        report["Decode"] = vm.InfoPanel.DecodeSummary;
+        report["D3D11DebugLayerVariable"] = Environment.GetEnvironmentVariable("MPVSHELL_D3D11_DEBUG_LAYER");
+        Require(Equals(decoder, await session.GetPropertyAsync("hwdec-current", CancellationToken.None)),
+            "测量期间解码模式不应悄然改变。");
+        Require(positionEnd - positionStart >= Math.Min(steady, endAt - warmup) - 1, "稳态窗口必须覆盖连续播放。");
+        if (!endedAtEof)
+        {
+            // 窗口结束后才读回一次，确认测量对象是真实画面；这次读回不计入窗口。
+            var frame = await CaptureAsync(renderer, forceRedraw: false);
+            Require(frame.HasColor, "测量窗口结束后必须仍有有效画面。");
+            report["FrameAfterWindow"] = frame.Summary;
+        }
+        Stage($"无采样自然播放测量完成：{statistics}");
+    }
+
+    private static double ParseSeconds(string? text, double fallback) =>
+        string.IsNullOrWhiteSpace(text) ? fallback : double.Parse(text, System.Globalization.CultureInfo.InvariantCulture);
+
+    private static long? Delta(Dictionary<string, object?> start, Dictionary<string, object?> end, string key) =>
+        start[key] is long before && end[key] is long after ? after - before : null;
+
+    private static async Task<Dictionary<string, object?>> ReadMpvCountersAsync(MpvPlayerSession session) => new()
+    {
+        ["VoDroppedFrames"] = await CounterAsync(session, "frame-drop-count"),
+        ["DecoderDroppedFrames"] = await CounterAsync(session, "decoder-frame-drop-count"),
+        ["VoDelayedFrames"] = await CounterAsync(session, "vo-delayed-frame-count"),
+        ["MistimedFrames"] = await CounterAsync(session, "mistimed-frame-count"),
+        ["EstimatedVfFps"] = await NumberAsync(session, "estimated-vf-fps"),
+        ["ContainerFps"] = await NumberAsync(session, "container-fps"),
+        ["HwdecCurrent"] = await session.GetPropertyAsync("hwdec-current", CancellationToken.None) as string,
+    };
+
+    private static async Task<object?> CounterAsync(MpvPlayerSession session, string property)
+    {
+        try { return await session.GetPropertyAsync(property, CancellationToken.None) switch { long value => value, int value => (long)value, _ => null }; }
+        catch (MpvException) { return null; }
+    }
+
+    private static async Task<object?> NumberAsync(MpvPlayerSession session, string property)
+    {
+        try { return await session.GetPropertyAsync(property, CancellationToken.None) switch { double value => value, long value => (double)value, _ => null }; }
+        catch (MpvException) { return null; }
     }
 
     private void ReadFrame(D3D11DeviceManager device, CompositionSwapChain swapChain, int generation)
@@ -369,13 +475,14 @@ internal sealed class AppRecoveryProbe
         pending.Completion.TrySetResult(pending.Frame);
     }
 
-    private async Task UntilAsync(Func<bool> condition, PlayerViewModel vm, string stage, bool allowError = false)
+    private async Task UntilAsync(Func<bool> condition, PlayerViewModel vm, string stage, bool allowError = false, TimeSpan? timeout = null)
     {
         var clock = Stopwatch.StartNew();
+        var limit = timeout ?? TimeSpan.FromSeconds(20);
         while (!condition())
         {
             if (!allowError && vm.ErrorMessage is not null) throw new InvalidOperationException(vm.ErrorMessage);
-            if (clock.Elapsed > TimeSpan.FromSeconds(20)) throw new TimeoutException(stage);
+            if (clock.Elapsed > limit) throw new TimeoutException(stage);
             await Task.Delay(25);
         }
     }

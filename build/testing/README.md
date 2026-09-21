@@ -51,3 +51,16 @@ pwsh -File build/testing/test-app-recovery.ps1 -NoBuild -Mode playback -MediaPat
 ```
 
 通过 `-AppPath` 可指定 Debug 可执行文件，`-ReportDirectory` 可指定报告目录。默认报告位于 `artifacts/app-recovery/<时间与唯一标识>/`；每次运行保留独立素材、场景报告和汇总，不覆盖已有文件。使用 HDR 文件通过恢复测试说明该输入的应用播放与恢复流程可用；显示器实际 HDR 输出和颜色准确性仍需另外验证。
+
+## 应用内自然播放性能测量
+
+`performance` 模式（P1-01 新增）在真实窗口内做**无采样**测量：预热 `-WarmupSeconds`（默认 3）后进入 `-SteadySeconds`（默认 30）的稳态窗口，窗口内不做任何 CPU 读回、不强制重绘，只读取渲染线程累计的呈现 fps、Render/Present 耗时分布（均值/中位/p95/最大）和 mpv 的 VO/解码丢帧差值。窗口结束后才读回一次确认画面非黑。报告不对吞吐设通过条件，判定规则见 [P1-01 记录](../../docs/implementation/evidence/P1-01-01-fixed-media-and-performance-scenarios.md)。
+
+```powershell
+pwsh -File build/testing/test-app-recovery.ps1 -NoBuild -Mode performance -MediaPath 'artifacts\hdr-4k\media\hevc-main10-hdr10-4k60-30s.mkv'
+pwsh -File build/testing/test-app-recovery.ps1 -NoBuild -Mode performance -MediaPath '...' -D3D11DebugLayer Off
+```
+
+`-D3D11DebugLayer Off` 通过 `MPVSHELL_D3D11_DEBUG_LAYER=0` 让 Debug 应用不创建 D3D11 调试层，用于在同一构建下对照调试层开销；报告中的 `Device.D3D11DebugLayerEnabled` 记录实际状态。`playback` 模式（有间隔采样）现在也输出同样的渲染统计与 mpv 计数，二者对照可量化采样开销。`performance` 模式的进程限时按预热与窗口自动放宽，也可用 `-TimeoutSeconds` 指定。
+
+固定 4K60 性能素材由 `prepare-perf-media.ps1` 生成到 `artifacts/hdr-4k/media/`，清单为 `perf-media-manifest.json`；离屏（不经窗口）的同类测量见 `tests/MpvShell.Rendering.WinUI.Tests/PlaybackPerformanceTests.cs`，通过 `MPVSHELL_TEST_PERF_*` 环境变量配置。
