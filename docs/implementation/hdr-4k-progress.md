@@ -153,7 +153,7 @@ FFmpeg 官方只发布源码；本轮使用其[官方下载页](https://ffmpeg.o
 
 以下保留当时的测试方案，不作为当前重新启动验收的要求；实际完成范围见上方各轮记录，用户已延后的跨屏与长期验证继续保留。自动化像素读回与显示器验收分开记录：`HdrGradientIntegrationTests` 读取同一份暂停的无损 PQ 图案，在不做 tone mapping 的目标峰值下对照 11 档 PQ 码值，再检查 1000 nits 目标和 SDR 输出的黑位、单调性与高光范围；报告使用 `hdr-gradient-pixel-report.json`。R10G10B10A2 连续码与 FP16 大于 1/负值/细小阶差等基础测试验证 GPU 表面精度。这些结果能证明像素通路及配置行为，不能证明显示器已经输出正确的物理亮度，也不能替代 Windows HDR/跨屏观察。
 
-当日发布包目录为 `artifacts/hdr-4k/win-x64/`，用于追溯 2026-09-11 验证；最新测试包统一见[发布状态](release-status.md)。当日已完成 Release 自包含发布、四 DLL 哈希/x64/加载/API 2.5、3 次会话创建销毁及 35 份许可证原文哈希校验，报告为目录内的 `publish-verification.json`。发布目录含 .NET/WinUI 运行时，应整体保留；历史生成命令：
+当日发布包目录为 `artifacts/hdr-4k/win-x64/`，用于追溯 2026-09-11 验证；最新测试包统一见[发布状态](release-status.md)。当日已完成 Release 自包含发布、四 DLL 哈希/x64/加载/API 2.5、3 次会话创建销毁及 35 份许可证原文哈希校验，报告为目录内的 `publish-verification.json`。2026-09-22 按用户要求清理了该旧包的运行文件，原位置保留发布报告，其余清单存档见[产物清理记录](artifacts-cleanup-2026-09-22.md)；下方仅为历史生成命令：
 
 ```powershell
 .\build\testing\publish-mvp.ps1 -OutputDirectory (Join-Path (Get-Location) artifacts/hdr-4k/win-x64) -NoRestore
