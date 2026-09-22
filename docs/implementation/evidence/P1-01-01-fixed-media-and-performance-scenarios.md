@@ -4,7 +4,7 @@
 |---|---|
 | 日期 | 2026-09-21 起，北京时间；本记录随工作包推进更新 |
 | 基线 | `main` / `8a4829c`（P1-00 文档提交）；开始时工作区干净 |
-| 状态 | **进行中。** 素材清单、场景清单、测量工具与判定规则已建立；场景数据尚未在目标机上执行，本文第 5 节全部为"待执行" |
+| 状态 | **进行中。** 素材清单、场景清单、测量工具与判定规则已建立；2026-09-22 Debug/Release 构建、统计测试与测量链路自检通过（第 8 节）；本文第 5 节性能场景仍全部为"待执行" |
 | 范围 | [Phase 1 计划 P1-01](../phase-1-plan.md#p1-01固定媒体回归与性能场景复核)：固定输入可再生成、功能与性能分开报告、PERF-01/PERF-02 复核、必要修复 |
 | 不在范围 | 跨屏、长期稳定性、触屏、其他 DPI 与 Intel/AMD 硬件矩阵仍按既有决定延后；短时性能复核不等于长期稳定性验收 |
 
@@ -172,3 +172,40 @@ Release 应用（S1-R）：用 `bin\x64\Release` 或当前发布包播放 `$hdr`
 - 离屏 Composition SwapChain 未绑定视觉，`Present` 是否受显示器 vblank 节流以报告中 Present 分布为准；应用内数据是 PERF-01 关闭的主证据。
 - `performance` 模式属于 Debug 探针；Release 只能依赖日志段统计，没有 JSON 报告。
 - 若 S1 系列在关闭调试层后满足 R1，还需 S1-R 确认 Release 表现，才能把 2026-09-11 的 14 fps 归入 R2(b)。
+
+## 8. 构建与测量链路自检（2026-09-22）
+
+本次实际执行时间为北京时间 14:12～14:14，源码为 `ed1295c`。开始时仅有 P1-00 文档措辞修正未提交，产品与测试代码未修改。环境：Windows 11 10.0.26200 x64、.NET SDK 10.0.401、GTX 1060 5GB / 驱动 32.0.15.8180。用户通过远程连接操作开发机，并说明当前为未启用 HDR / 不支持 HDR 的显示环境；本次自检明确使用 SDR 离屏输出。
+
+原始构建日志、测试日志、TRX 与 JSON 保存在 [本次报告目录](../../../artifacts/p1-01-selfcheck-20260922-141205/)。
+
+| 验证 | Debug | Release |
+|---|---|---|
+| x64 解决方案构建 | 通过，0 警告、0 错误 | 通过，0 警告、0 错误 |
+| `RenderStatisticsCollectorTests` | 14 通过、0 失败、0 跳过 | 14 通过、0 失败、0 跳过 |
+| `Measurement_harness_should_run_on_generated_media_without_asserting_throughput` | 1 通过、0 失败、0 跳过 | 1 通过、0 失败、0 跳过 |
+| 报告实际渲染设备 | NVIDIA GeForce GTX 1060 5GB，非 WARP | NVIDIA GeForce GTX 1060 5GB，非 WARP |
+| D3D11 调试层 | 启用 | 关闭 |
+| 稳态媒体位置 | 1 s → 5 s | 1 s → 5 s |
+| 稳态呈现帧数 / 读回次数 | 8 帧 / 3 次，均观察到非黑画面 | 8 帧 / 3 次，均观察到非黑画面 |
+| 稳态 VO / 解码丢帧 | 0 / 0 | 0 / 0 |
+
+自检自动生成 10 秒、64×64、2 fps 的 Y4M 素材，视频使用软件解码，呈现使用 D3D11/ANGLE、256×144 BGRA8 离屏表面、vsync 0；预热 1 秒、测量窗口 4 秒、每秒一次读回。两种配置的素材 SHA-256 均为 `E62B007BA8ADD075B7BD6578B6C08DEB814B6B3947AEE5944E7A59BC47091224`，libmpv SHA-256 均为 `5E9D2D0DDED0A30D6B41AEB324D5200F84696BC7D9039B460DD680FC2804C705`。
+
+执行命令（以下输出目录对应本次运行，复跑应选择新目录）：
+
+```powershell
+dotnet build mpv-winui.slnx -c Debug -p:Platform=x64 -v:minimal
+dotnet build mpv-winui.slnx -c Release -p:Platform=x64 --no-restore -v:minimal
+$runDirectory = 'artifacts/p1-01-selfcheck-20260922-141205'
+foreach ($configuration in 'Debug', 'Release') {
+    $resultsDirectory = Join-Path $runDirectory $configuration
+    dotnet test tests/MpvShell.Rendering.WinUI.Tests/MpvShell.Rendering.WinUI.Tests.csproj -c $configuration -p:Platform=x64 --no-build --no-restore --filter 'FullyQualifiedName~RenderStatisticsCollectorTests' --logger 'trx;LogFileName=statistics.trx' --results-directory $resultsDirectory
+    $env:MPVSHELL_TEST_HARDWARE_REPORT_DIR = Join-Path (Get-Location) "$resultsDirectory/hardware-reports"
+    dotnet test tests/MpvShell.Rendering.WinUI.Tests/MpvShell.Rendering.WinUI.Tests.csproj -c $configuration -p:Platform=x64 --no-build --no-restore --filter 'FullyQualifiedName~Measurement_harness_should_run_on_generated_media_without_asserting_throughput' --logger 'trx;LogFileName=harness.trx' --results-directory $resultsDirectory
+}
+```
+
+实际执行时每次调用还通过 `Tee-Object` 留存命令输出，并检查退出码；六次构建/测试调用退出码均为 0。每种配置的 `statistics.trx` 与 `harness.trx` 是测试通过依据，`hardware-reports/performance-harness-selfcheck.json` 补充设备与测量数据。JSON 的 `Status="已测量，未判定"` 表示未设吞吐阈值，不是自检失败，也不能单凭该字段声称测试通过。
+
+**结论：本机 SDR 环境下的构建、统计逻辑和测量链路自检通过。** 本次未执行全量回归、固定 4K 素材、S1～S7 性能场景或真实窗口/HDR 显示输出验收；PERF-01/PERF-02 保持待验证，P1-01 尚未完成。
