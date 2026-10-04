@@ -26,7 +26,7 @@ dotnet test mpv-winui.slnx -p:Platform=x64 --no-build --no-restore
 
 ## 当前测试包与发布
 
-**[当前发布包入口](docs/implementation/release-status.md)** 统一登记可用 ZIP、解压目录、启动方法、源码提交、哈希及验证范围。当前登记的是包含 TS 修复的 Release x64 自包含测试包；`artifacts/mvp/`、`artifacts/hdr-4k/win-x64/` 和 `artifacts/phase-0/win-x64/` 是历史产物，不作为最新版本入口。
+**[当前发布包入口](docs/implementation/release-status.md)** 统一登记可用 ZIP、解压目录、启动方法、源码提交、哈希及验证范围。当前登记的是 2026-10-02 的 GTX 1060 Release x64 自包含测试包，附两份 4K60 对照素材与测试入口；用户已确认 GTX 1060 HDR→SDR 窗口/全屏场景正常，P1-01 / PERF-01 已关闭，PERF-02 采样对照仍跟进。9 月 22 日 RTX 3070 日志已复核，边界见发布入口。`artifacts/mvp/`、`artifacts/hdr-4k/win-x64/` 和 `artifacts/phase-0/win-x64/` 是历史产物，不作为最新版本入口。
 
 生成新的独立测试包（PowerShell 7，仓库根目录）：
 
