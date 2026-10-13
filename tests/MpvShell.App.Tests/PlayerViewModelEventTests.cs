@@ -177,14 +177,14 @@ public sealed class PlayerViewModelEventTests
         var backend = new EventPublishingBackend();
         var dispatcher = new QueuedUiDispatcher();
         await using var vm = CreateViewModel(backend, dispatcher);
-        await vm.InitializeAsync();
         vm.State = PlaybackState.Initial with { CurrentUrl = "current.mp4", IsPlaying = true };
         backend.Publish(new PlaybackStateChanged(vm.State));
         backend.Publish(new BufferingChanged(true));
-        var queued = await dispatcher.TakeAsync(2);
+        await vm.InitializeAsync();
+        var queued = await dispatcher.TakeAsync();
 
         vm.ReportRenderingFailure("视频渲染失败，请重新打开播放器。");
-        foreach (var callback in queued) callback();
+        queued();
         await vm.ChangeVolumeAsync(20);
         await vm.TogglePlayPauseCommand.ExecuteAsync(null);
         vm.UrlText = "next.mp4";
@@ -325,29 +325,25 @@ public sealed class PlayerViewModelEventTests
         await using var vm = CreateViewModel(backend, dispatcher);
         var initial = PlaybackState.Initial with { IsPlaying = true, AreControlsVisible = false };
         vm.State = initial;
-        await vm.InitializeAsync();
 
         var track = new TrackInfo(1, "audio", "zho", "中文音轨", true);
         backend.Publish(new PlaybackStateChanged(initial with { PositionSeconds = 18, Volume = 42 }));
         backend.Publish(new TracksChanged([track]));
         backend.Publish(new BackendFaulted("媒体读取失败"));
         backend.Publish(new EndReached());
-        var callbacks = await dispatcher.TakeAsync(4);
+        await vm.InitializeAsync();
+        var callback = await dispatcher.TakeAsync();
 
         vm.State.Should().Be(initial, "后端事件在 UI 回调执行前不能修改可绑定状态");
         vm.Tracks.Should().BeEmpty();
         vm.ErrorMessage.Should().BeNull();
 
-        callbacks[0]();
+        callback();
         vm.State.PositionSeconds.Should().Be(18);
         vm.State.Volume.Should().Be(42);
-        vm.State.IsPlaying.Should().BeTrue();
-        callbacks[1]();
         vm.Tracks.Should().Equal(track);
-        callbacks[2]();
         vm.ErrorMessage.Should().Be("媒体读取失败");
         vm.State.AreControlsVisible.Should().BeTrue();
-        callbacks[3]();
         vm.State.IsPlaying.Should().BeFalse();
     }
 
@@ -443,7 +439,6 @@ public sealed class PlayerViewModelEventTests
             CurrentOverlay = OverlayKind.InfoPanel,
         };
         vm.State = initial;
-        await vm.InitializeAsync();
         var initialVideoSummary = vm.InfoPanel.VideoSummary;
         var initialAudioSummary = vm.InfoPanel.AudioSummary;
         var initialHdrSummary = vm.InfoPanel.HdrSummary;
@@ -455,11 +450,11 @@ public sealed class PlayerViewModelEventTests
         backend.Publish(new BackendFaulted("延迟到达的错误"));
         backend.Publish(new EndReached());
         backend.Publish(new BufferingChanged(true));
-        var callbacks = await dispatcher.TakeAsync(6);
+        await vm.InitializeAsync();
+        var callback = await dispatcher.TakeAsync();
 
         var disposal = vm.DisposeAsync().AsTask();
-        foreach (var callback in callbacks)
-            callback();
+        callback();
         await disposal.WaitAsync(TimeSpan.FromSeconds(5));
 
         backend.ObservedCancellationToken.IsCancellationRequested.Should().BeTrue();
@@ -553,12 +548,5 @@ public sealed class PlayerViewModelEventTests
         public async Task<Action> TakeAsync() =>
             await _callbacks.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5));
 
-        public async Task<Action[]> TakeAsync(int count)
-        {
-            var callbacks = new Action[count];
-            for (var index = 0; index < count; index++)
-                callbacks[index] = await TakeAsync();
-            return callbacks;
-        }
     }
 }

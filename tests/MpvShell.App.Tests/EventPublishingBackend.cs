@@ -18,6 +18,9 @@ internal sealed class EventPublishingBackend : IPlayerBackend
     public Func<double, CancellationToken, Task>? SetPositionHandler { get; set; }
 
     public Func<CancellationToken, Task>? PlayHandler { get; set; }
+    public Func<CancellationToken, Task>? PauseHandler { get; set; }
+    public Func<int, CancellationToken, Task>? VolumeHandler { get; set; }
+    public Func<bool, CancellationToken, Task>? MuteHandler { get; set; }
 
     public Func<int, CancellationToken, Task>? AudioTrackHandler { get; set; }
 
@@ -63,13 +66,13 @@ internal sealed class EventPublishingBackend : IPlayerBackend
         LoadHandler?.Invoke(url, cancellationToken) ?? Task.CompletedTask;
     public Task PlayAsync(CancellationToken cancellationToken) =>
         PlayHandler?.Invoke(cancellationToken) ?? Task.CompletedTask;
-    public Task PauseAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+    public Task PauseAsync(CancellationToken cancellationToken) => PauseHandler?.Invoke(cancellationToken) ?? Task.CompletedTask;
     public Task SeekAsync(double deltaSeconds, CancellationToken cancellationToken) =>
         SeekHandler?.Invoke(deltaSeconds, cancellationToken) ?? Task.CompletedTask;
     public Task SetPositionAsync(double absoluteSeconds, CancellationToken cancellationToken) =>
         SetPositionHandler?.Invoke(absoluteSeconds, cancellationToken) ?? Task.CompletedTask;
-    public Task SetVolumeAsync(int volume, CancellationToken cancellationToken) => Task.CompletedTask;
-    public Task SetMuteAsync(bool muted, CancellationToken cancellationToken) => Task.CompletedTask;
+    public Task SetVolumeAsync(int volume, CancellationToken cancellationToken) => VolumeHandler?.Invoke(volume, cancellationToken) ?? Task.CompletedTask;
+    public Task SetMuteAsync(bool muted, CancellationToken cancellationToken) => MuteHandler?.Invoke(muted, cancellationToken) ?? Task.CompletedTask;
     public Task SetAudioTrackAsync(int trackId, CancellationToken cancellationToken) =>
         AudioTrackHandler?.Invoke(trackId, cancellationToken) ?? Task.CompletedTask;
     public Task SetSubtitleTrackAsync(int trackId, CancellationToken cancellationToken) =>

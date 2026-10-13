@@ -1,7 +1,5 @@
 using System.Globalization;
 using System.Diagnostics;
-using System.Runtime.CompilerServices;
-using System.Threading.Channels;
 using MpvShell.Player.Abstractions;
 using MpvShell.Player.Abstractions.Events;
 using MpvShell.Player.Abstractions.Models;
@@ -14,10 +12,7 @@ public sealed class LibMpvBackend : IPlayerBackend
     private readonly MpvPlayerSession _session;
     private readonly object _stateGate = new();
     private readonly SemaphoreSlim _loadGate = new(1, 1);
-    private readonly Channel<QueuedPlayerEvent> _events = Channel.CreateBounded<QueuedPlayerEvent>(new BoundedChannelOptions(256)
-    {
-        SingleReader = true, FullMode = BoundedChannelFullMode.DropOldest, AllowSynchronousContinuations = false,
-    });
+    private readonly PlayerEventBuffer _events = new();
     private readonly Dictionary<string, object?> _properties = new(StringComparer.Ordinal);
     private PlaybackState _state = PlaybackState.Initial;
     private IReadOnlyList<TrackInfo> _tracks = Array.Empty<TrackInfo>();
@@ -29,6 +24,7 @@ public sealed class LibMpvBackend : IPlayerBackend
     private bool _awaitingStart;
     private bool _mediaActive;
     private bool _isBuffering;
+    private Exception? _terminalError;
     private TaskCompletionSource? _loadCompletion;
     private int _disposed;
     private long _lastDiagnosticTimestamp;
@@ -41,30 +37,41 @@ public sealed class LibMpvBackend : IPlayerBackend
 
     public async Task InitializeAsync(CancellationToken cancellationToken)
     {
-        ThrowIfDisposed();
+        ThrowIfUnavailable();
         await _session.InitializeAsync(cancellationToken).ConfigureAwait(false);
-        lock (_stateGate) PublishState();
+        lock (_stateGate)
+        {
+            ThrowIfUnavailable();
+            PublishState();
+        }
     }
 
     public async Task LoadUrlAsync(string url, CancellationToken cancellationToken)
     {
-        ThrowIfDisposed();
+        ThrowIfUnavailable();
         var source = ValidateMediaSource(url);
         await _loadGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var waiting = true; // 与提交回调在 _stateGate 内协调；等待结束不等于原生加载结束。
         try
         {
-            Trace.WriteLine($"[libmpv] 加载媒体：{(Uri.TryCreate(source, UriKind.Absolute, out var uri) && uri.Scheme is "http" or "https" ? $"{uri.Scheme}://{uri.IdnHost}:{uri.Port}/[媒体]" : Path.GetFileName(source))}");
-            lock (_stateGate)
-            {
-                _state = _state with { CurrentUrl = source };
-                _loadCompletion = completion;
-                _awaitingStart = true;
-                _mediaActive = false;
-                PublishBuffering(false);
-            }
+            ThrowIfUnavailable();
             await _session.SetPropertyAsync("pause", false, cancellationToken).ConfigureAwait(false);
-            await _session.CommandAsync(["loadfile", source, "replace"], cancellationToken).ConfigureAwait(false);
+            ThrowIfUnavailable();
+            await _session.CommandAsync(["loadfile", source, "replace"], cancellationToken, () =>
+            {
+                lock (_stateGate)
+                {
+                    if (_disposed != 0 || _terminalError is not null) return;
+                    Trace.WriteLine($"[libmpv] 加载媒体：{(Uri.TryCreate(source, UriKind.Absolute, out var uri) && uri.Scheme is "http" or "https" ? $"{uri.Scheme}://{uri.IdnHost}:{uri.Port}/[媒体]" : Path.GetFileName(source))}");
+                    _state = _state with { CurrentUrl = source };
+                    _events.ResetMedia();
+                    _loadCompletion = waiting ? completion : null;
+                    _awaitingStart = true;
+                    _mediaActive = false;
+                    PublishBuffering(false);
+                }
+            }).ConfigureAwait(false);
             // loadfile 的命令回复只表示已排队；真正读取媒体头失败必须返回给调用方。
             await completion.Task.WaitAsync(TimeSpan.FromSeconds(20), cancellationToken).ConfigureAwait(false);
         }
@@ -73,8 +80,9 @@ public sealed class LibMpvBackend : IPlayerBackend
         {
             lock (_stateGate)
             {
+                waiting = false;
                 if (ReferenceEquals(_loadCompletion, completion)) _loadCompletion = null;
-                _awaitingStart = false;
+                // 仅移除调用方等待；已提交加载仍由 StartFile / FileLoaded / EndFile 推进。
             }
             _loadGate.Release();
         }
@@ -94,7 +102,7 @@ public sealed class LibMpvBackend : IPlayerBackend
 
     public Task PlayAsync(CancellationToken cancellationToken)
     {
-        ThrowIfDisposed();
+        ThrowIfUnavailable();
         string? replay;
         lock (_stateGate)
         {
@@ -108,7 +116,7 @@ public sealed class LibMpvBackend : IPlayerBackend
 
     public async Task SeekAsync(double deltaSeconds, CancellationToken cancellationToken)
     {
-        ThrowIfDisposed();
+        ThrowIfUnavailable();
         if (!double.IsFinite(deltaSeconds)) throw new ArgumentOutOfRangeException(nameof(deltaSeconds));
         double? fromEnd;
         lock (_stateGate) fromEnd = _ended && !_loaded ? Math.Max(0, _state.PositionSeconds + deltaSeconds) : null;
@@ -120,7 +128,7 @@ public sealed class LibMpvBackend : IPlayerBackend
 
     public async Task SetPositionAsync(double absoluteSeconds, CancellationToken cancellationToken)
     {
-        ThrowIfDisposed();
+        ThrowIfUnavailable();
         if (!double.IsFinite(absoluteSeconds) || absoluteSeconds < 0) throw new ArgumentOutOfRangeException(nameof(absoluteSeconds));
         string? replay;
         lock (_stateGate) replay = _ended && !_loaded ? _state.CurrentUrl : null;
@@ -135,7 +143,7 @@ public sealed class LibMpvBackend : IPlayerBackend
 
     private Task SetAsync(string property, object value, CancellationToken cancellationToken)
     {
-        ThrowIfDisposed();
+        ThrowIfUnavailable();
         return _session.SetPropertyAsync(property, value, cancellationToken);
     }
 
@@ -153,41 +161,62 @@ public sealed class LibMpvBackend : IPlayerBackend
         lock (_stateGate) return Task.FromResult(_info);
     }
 
-    public async IAsyncEnumerable<PlayerEvent> ObserveEventsAsync([EnumeratorCancellation] CancellationToken cancellationToken)
-    {
-        var isBuffering = false;
-        await foreach (var queued in _events.Reader.ReadAllAsync(cancellationToken).ConfigureAwait(false))
-        {
-            // DropOldest 可能丢掉唯一的缓冲结束通知。每个事件携带发布当时的快照，
-            // 在下一个存活事件之前补齐状态；不能读当前全局值，否则会把未来状态插到旧事件前。
-            if (queued.IsBuffering != isBuffering)
-            {
-                isBuffering = queued.IsBuffering;
-                yield return new BufferingChanged(isBuffering);
-            }
-            if (queued.Event is not BufferingChanged) yield return queued.Event;
-        }
-    }
+    public IAsyncEnumerable<PlayerEvent> ObserveEventsAsync(CancellationToken cancellationToken) =>
+        _events.ReadAllAsync(cancellationToken);
 
     internal void OnSessionEvent(SessionEvent playerEvent)
     {
         lock (_stateGate)
         {
-            if (_disposed != 0) return;
+            if (_disposed != 0 || _terminalError is not null) return;
             // 新媒体尚未发出 StartFile 时，忽略排队中的旧媒体状态/结束事件。
             if (_awaitingStart && playerEvent.Id is MpvEventId.EndFile or MpvEventId.FileLoaded)
                 return;
-            if (playerEvent.Error is not null)
+            if (playerEvent.Error is not null || playerEvent.Id == MpvEventId.Shutdown)
             {
-                Trace.WriteLine($"[libmpv] 播放错误：{playerEvent.Error}");
+                var error = playerEvent.Error ?? new InvalidOperationException("播放器会话已关闭。");
+                var kind = playerEvent.ErrorKind ?? playerEvent.Id switch
+                {
+                    MpvEventId.Shutdown => PlayerErrorKind.Session,
+                    MpvEventId.QueueOverflow => PlayerErrorKind.EventQueue,
+                    MpvEventId.EndFile => _loaded ? PlayerErrorKind.Playback : PlayerErrorKind.Loading,
+                    _ => PlayerErrorKind.EventStream,
+                };
+                var fault = new BackendFaulted(error.Message, kind);
+                Trace.WriteLine($"[libmpv] {kind} 错误：{error}");
                 _mediaActive = false;
                 PublishBuffering(false);
-                Publish(new BackendFaulted(playerEvent.Error.Message));
+                if (fault.IsTerminal)
+                {
+                    _terminalError = error;
+                    _loaded = false;
+                    _ended = false;
+                    _idle = true;
+                    _awaitingStart = false;
+                    _loadCompletion?.TrySetException(error);
+                    PublishState();
+                    Publish(fault);
+                    return;
+                }
+                Publish(fault);
+                if (kind == PlayerErrorKind.EventQueue)
+                {
+                    // 溢出可能丢失 FileLoaded/EndFile，当前加载等待不能再依赖这些事件。
+                    // 允许重新加载；旧 FileLoaded 不能单独恢复播放，必须先看到新 StartFile。
+                    _loaded = false;
+                    _ended = false;
+                    _idle = true;
+                    _events.ClearEnd();
+                    _loadCompletion?.TrySetException(error);
+                    PublishState();
+                    return;
+                }
             }
 
             switch (playerEvent.Id)
             {
                 case MpvEventId.StartFile:
+                    _events.ResetMedia();
                     _awaitingStart = false;
                     _loaded = false;
                     _ended = false;
@@ -202,6 +231,7 @@ public sealed class LibMpvBackend : IPlayerBackend
                     PublishState();
                     break;
                 case MpvEventId.FileLoaded:
+                    if (!_mediaActive) break;
                     Trace.WriteLine("[libmpv] 媒体加载完成。");
                     _loaded = true;
                     _idle = false;
@@ -212,20 +242,14 @@ public sealed class LibMpvBackend : IPlayerBackend
                     _loaded = false;
                     _mediaActive = false;
                     PublishBuffering(false);
-                    if (_loadCompletion is not null && !_loadCompletion.Task.IsCompleted)
+                    // 播放列表展开以 EndFile(redirect) 结束当前条目，随后继续加载插入的媒体。
+                    // 只有确有后续条目时才保留等待；空列表必须及时结束，不能等到加载超时。
+                    if (!(playerEvent.Value is 5 && playerEvent.PlaylistInsertCount > 0)
+                        && _loadCompletion is not null && !_loadCompletion.Task.IsCompleted)
                         _loadCompletion.TrySetException(playerEvent.Error ?? new InvalidOperationException("媒体加载已中止。"));
                     if (playerEvent.Value is 0) MarkEnded();
                     PublishState();
                     LogPlaybackDiagnostics(force: true);
-                    break;
-                case MpvEventId.Shutdown:
-                    _loadCompletion?.TrySetException(playerEvent.Error ?? new InvalidOperationException("播放器会话已关闭。"));
-                    _loaded = false;
-                    _idle = true;
-                    _mediaActive = false;
-                    PublishBuffering(false);
-                    PublishState();
-                    if (playerEvent.Error is null) Publish(new BackendFaulted("播放器会话已关闭。"));
                     break;
                 case MpvEventId.PropertyChange when playerEvent.Property is not null:
                     if (_awaitingStart && playerEvent.Property is not ("pause" or "volume" or "mute")) break;
@@ -253,7 +277,11 @@ public sealed class LibMpvBackend : IPlayerBackend
             case "idle-active": _idle = value is true; PublishState(); break;
             case "eof-reached":
                 if (value is true) MarkEnded();
-                else if (value is false && _loaded) _ended = false;
+                else if (value is false && _loaded)
+                {
+                    _ended = false;
+                    _events.ClearEnd();
+                }
                 PublishState(); break;
             case "time-pos" when value is not null:
                 _state = _state with { PositionSeconds = Number(value) }; PublishState(); break;
@@ -310,9 +338,7 @@ public sealed class LibMpvBackend : IPlayerBackend
         Publish(new BufferingChanged(isBuffering));
     }
 
-    private void Publish(PlayerEvent playerEvent) => _events.Writer.TryWrite(new(playerEvent, _isBuffering));
-
-    private readonly record struct QueuedPlayerEvent(PlayerEvent Event, bool IsBuffering);
+    private void Publish(PlayerEvent playerEvent) => _events.Publish(playerEvent);
 
     internal static IReadOnlyList<TrackInfo> ParseTracks(object? value)
     {
@@ -384,6 +410,14 @@ public sealed class LibMpvBackend : IPlayerBackend
     private static double Number(object? value) => value switch { double number => number, long integer => integer, int integer => integer, _ => 0 };
     private void ThrowIfDisposed() => ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
 
+    private void ThrowIfUnavailable()
+    {
+        ThrowIfDisposed();
+        lock (_stateGate)
+            if (_terminalError is not null)
+                throw new InvalidOperationException("播放器已停止，请重新启动。", _terminalError);
+    }
+
     public async ValueTask DisposeAsync()
     {
         if (Interlocked.Exchange(ref _disposed, 1) == 0)
@@ -395,7 +429,7 @@ public sealed class LibMpvBackend : IPlayerBackend
                 _mediaActive = false;
                 PublishBuffering(false);
             }
-            _events.Writer.TryComplete();
+            _events.Complete();
         }
         await _session.DisposeAsync().ConfigureAwait(false);
     }

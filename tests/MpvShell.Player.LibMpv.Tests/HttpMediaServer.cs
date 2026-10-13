@@ -14,15 +14,21 @@ internal sealed class HttpMediaServer : IAsyncDisposable
     private readonly ConcurrentBag<Task> _clients = [];
     private readonly byte[] _wave;
     private readonly Task _acceptLoop;
+    private readonly TaskCompletionSource _mediaRequested = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly TaskCompletionSource _releaseMedia = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    internal Task MediaRequested => _mediaRequested.Task;
+    internal void ReleaseMedia() => _releaseMedia.TrySetResult();
 
     internal ConcurrentQueue<int> ResponseCodes { get; } = new();
     internal ConcurrentQueue<string> RangeRequests { get; } = new();
     internal string MediaUrl { get; }
     internal string MissingUrl { get; }
 
-    internal HttpMediaServer()
+    internal HttpMediaServer(bool holdMedia = false, int durationSeconds = 8)
     {
-        _wave = CreateWave(8);
+        _wave = CreateWave(durationSeconds);
+        if (!holdMedia) ReleaseMedia();
         _listener.Start();
         var port = ((IPEndPoint)_listener.LocalEndpoint).Port;
         MediaUrl = $"http://127.0.0.1:{port}/media.wav?token=private-test-token";
@@ -70,6 +76,9 @@ internal sealed class HttpMediaServer : IAsyncDisposable
                     return;
                 }
 
+                // 用显式屏障固定取消/换媒体的时序，不依赖网络速度或任意延时。
+                _mediaRequested.TrySetResult();
+                await _releaseMedia.Task.WaitAsync(_shutdown.Token);
                 var start = 0;
                 var end = _wave.Length - 1;
                 if (range is not null)

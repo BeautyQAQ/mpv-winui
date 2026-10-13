@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
+using MpvShell.Player.Abstractions.Events;
 using MpvShell.Player.LibMpv.Native;
 
 namespace MpvShell.Player.LibMpv;
@@ -29,6 +30,7 @@ public sealed partial class MpvPlayerSession : IMpvPlayerSession
     private readonly MpvWakeupCallback _wakeupCallback;
     private readonly IReadOnlyDictionary<string, string>? _testOptions;
     private readonly string _logLevel;
+    private readonly TimeSpan _requestTimeout;
     private TaskCompletionSource? _renderReleased;
     private Task? _disposeTask;
     private nint _handle;
@@ -51,10 +53,12 @@ public sealed partial class MpvPlayerSession : IMpvPlayerSession
         _ => "error",
     };
 
-    internal MpvPlayerSession(IReadOnlyDictionary<string, string>? testOptions, string logLevel = "error")
+    internal MpvPlayerSession(IReadOnlyDictionary<string, string>? testOptions, string logLevel = "error", TimeSpan? requestTimeout = null)
     {
         _testOptions = testOptions;
         _logLevel = NormalizeLogLevel(logLevel);
+        _requestTimeout = requestTimeout ?? RequestTimeout;
+        if (_requestTimeout <= TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(requestTimeout));
         _wakeupCallback = _ =>
         {
             // 回调不解析事件、不调用 Client API，不允许托管异常越过 C ABI。
@@ -120,15 +124,15 @@ public sealed partial class MpvPlayerSession : IMpvPlayerSession
         Trace.WriteLine($"[libmpv] 渲染资源释放失败，保留 core 至进程结束：{error.Message}");
     }
 
-    internal Task<object?> CommandAsync(string[] arguments, CancellationToken cancellationToken) =>
-        MutatePlaybackAsync(() => CommandCoreAsync(arguments, cancellationToken), cancellationToken);
+    internal Task<object?> CommandAsync(string[] arguments, CancellationToken cancellationToken, Action? onSubmitted = null) =>
+        MutatePlaybackAsync(() => CommandCoreAsync(arguments, cancellationToken, onSubmitted), cancellationToken);
 
-    private Task<object?> CommandCoreAsync(string[] arguments, CancellationToken cancellationToken) =>
+    private Task<object?> CommandCoreAsync(string[] arguments, CancellationToken cancellationToken, Action? onSubmitted = null) =>
         RequestAsync((handle, id) =>
         {
             using var utf8 = new Utf8Arguments(arguments);
             return MpvNative.CommandAsync(handle, id, utf8.Pointer);
-        }, cancellationToken);
+        }, cancellationToken, onSubmitted);
 
     internal Task<object?> GetPropertyAsync(string name, CancellationToken cancellationToken) =>
         RequestAsync((handle, id) => MpvNative.GetPropertyAsync(handle, id, name, MpvFormat.Node), cancellationToken);
@@ -184,7 +188,7 @@ public sealed partial class MpvPlayerSession : IMpvPlayerSession
         }
     }
 
-    private async Task<object?> RequestAsync(Func<nint, ulong, int> send, CancellationToken cancellationToken)
+    private async Task<object?> RequestAsync(Func<nint, ulong, int> send, CancellationToken cancellationToken, Action? onSubmitted = null)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var id = (ulong)Interlocked.Increment(ref _nextRequestId);
@@ -199,13 +203,19 @@ public sealed partial class MpvPlayerSession : IMpvPlayerSession
             {
                 // 排队期间取消的操作无需再进入 mpv；已提交的操作仍允许自然完成。
                 if (!_pending.ContainsKey(id)) return;
-                try { MpvNative.Check(send(handle, id), "播放器请求"); }
+                try
+                {
+                    MpvNative.Check(send(handle, id), "播放器请求");
+                    // 仅在原生入口接受请求后通知；仍在事件线程，先于该请求引起的事件派发。
+                    // 取消等待不撤销已提交请求，因此此通知不能依赖等待者是否仍存在。
+                    onSubmitted?.Invoke();
+                }
                 catch (Exception ex) { completion.TrySetException(ex); }
             });
             _eventSignal.Set();
         }
 
-        try { return await completion.Task.WaitAsync(RequestTimeout, cancellationToken).ConfigureAwait(false); }
+        try { return await completion.Task.WaitAsync(_requestTimeout, cancellationToken).ConfigureAwait(false); }
         catch (TimeoutException ex) { throw new TimeoutException("播放器请求超时，请检查媒体或重新加载。", ex); }
         finally { _pending.TryRemove(id, out _); }
     }
@@ -253,7 +263,14 @@ public sealed partial class MpvPlayerSession : IMpvPlayerSession
                     var nativeEvent = Marshal.PtrToStructure<MpvEvent>(MpvNative.WaitEvent(handle, 0));
                     if (nativeEvent.Id == MpvEventId.None) { exhausted = true; break; }
                     try { Dispatch(nativeEvent); }
-                    catch (Exception ex) { Publish(new SessionEvent(nativeEvent.Id, Error: ex)); }
+                    catch (Exception ex)
+                    {
+                        lock (_lifecycle) _faulted = true;
+                        // 退出事件线程前尽力暂停 core，避免等待渲染资源归还期间继续播放音频。
+                        TryPauseAfterFailure(handle);
+                        _stop = true;
+                        Publish(new SessionEvent(MpvEventId.Shutdown, Error: ex, ErrorKind: PlayerErrorKind.EventStream));
+                    }
                 }
 
                 if (!_stop && exhausted && _commands.IsEmpty)
@@ -264,8 +281,10 @@ public sealed partial class MpvPlayerSession : IMpvPlayerSession
         {
             Trace.WriteLine($"[libmpv] 会话初始化或事件处理失败：{ex}");
             lock (_lifecycle) _faulted = true;
+            var kind = _ready.Task.IsCompletedSuccessfully ? PlayerErrorKind.Session : PlayerErrorKind.Initialization;
+            if (kind == PlayerErrorKind.Session) TryPauseAfterFailure(handle);
             _ready.TrySetException(ex);
-            Publish(new SessionEvent(MpvEventId.Shutdown, Error: ex));
+            Publish(new SessionEvent(MpvEventId.Shutdown, Error: ex, ErrorKind: kind));
         }
         finally
         {
@@ -298,6 +317,12 @@ public sealed partial class MpvPlayerSession : IMpvPlayerSession
         }
     }
 
+    private static void TryPauseAfterFailure(nint handle)
+    {
+        try { MpvNative.Check(SetProperty(handle, 0, "pause", true), "会话失败后暂停"); }
+        catch (Exception pauseError) { Trace.WriteLine($"[libmpv] 会话失败后暂停未完成：{pauseError.Message}"); }
+    }
+
     private IEnumerable<KeyValuePair<string, string>> InitializationOptions()
     {
         var options = new Dictionary<string, string>
@@ -324,6 +349,13 @@ public sealed partial class MpvPlayerSession : IMpvPlayerSession
 
     private void Dispatch(MpvEvent nativeEvent)
     {
+        if (nativeEvent.Id == MpvEventId.Shutdown)
+        {
+            lock (_lifecycle) _faulted = true;
+            _stop = true;
+            Publish(new SessionEvent(MpvEventId.Shutdown, ErrorKind: PlayerErrorKind.Session));
+            return;
+        }
         if (nativeEvent.Id is MpvEventId.CommandReply or MpvEventId.GetPropertyReply or MpvEventId.SetPropertyReply)
         {
             if (!_pending.TryGetValue(nativeEvent.ReplyUserData, out var pending)) return;
@@ -344,7 +376,8 @@ public sealed partial class MpvPlayerSession : IMpvPlayerSession
         {
             var end = Marshal.PtrToStructure<MpvEndFile>(nativeEvent.Data);
             Publish(new SessionEvent(nativeEvent.Id, Value: end.Reason,
-                Error: end.Reason == 4 ? new MpvException("加载或播放媒体", end.Error) : null));
+                Error: end.Reason == 4 ? new MpvException("加载或播放媒体", end.Error) : null,
+                PlaylistInsertCount: end.PlaylistInsertCount));
         }
         else if (nativeEvent.Id == MpvEventId.LogMessage)
         {
@@ -355,7 +388,11 @@ public sealed partial class MpvPlayerSession : IMpvPlayerSession
             Trace.WriteLine(FormatLogMessage(prefix, level, message));
         }
         else if (nativeEvent.Id == MpvEventId.QueueOverflow)
+        {
+            // 已丢失的状态不能继续驱动播放按钮；等待重新加载期间暂停实际音视频。
+            TryPauseAfterFailure(_handle);
             Publish(new SessionEvent(nativeEvent.Id, Error: new InvalidOperationException("播放器事件队列溢出，请重新加载媒体。")));
+        }
         else
             Publish(new SessionEvent(nativeEvent.Id));
     }
@@ -395,4 +432,5 @@ public sealed partial class MpvPlayerSession : IMpvPlayerSession
     }
 }
 
-internal sealed record SessionEvent(MpvEventId Id, string? Property = null, object? Value = null, Exception? Error = null);
+internal sealed record SessionEvent(MpvEventId Id, string? Property = null, object? Value = null,
+    Exception? Error = null, int PlaylistInsertCount = 0, PlayerErrorKind? ErrorKind = null);

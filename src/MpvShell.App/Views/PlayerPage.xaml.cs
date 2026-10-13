@@ -75,11 +75,11 @@ public sealed partial class PlayerPage : Page
         try
         {
             await ViewModel.InitializeAsync();
-            if (!ViewModel.IsInitialized) return;
+            if (!ViewModel.IsInitialized || ViewModel.HasTerminalFailure) return;
             var session = ((App)Application.Current).Services.GetRequiredService<IMpvPlayerSession>();
             await _videoSurfaceRenderer.InitializeAsync(session, CancellationToken.None);
             await _videoSurfaceRenderer.AttachAsync(VideoSurface, CancellationToken.None);
-            if (_shutdownTask is not null) return;
+            if (_shutdownTask is not null || ViewModel.HasTerminalFailure) return;
             _ready = true;
             OpenMediaPanel.IsEnabled = TransportControls.IsEnabled = true;
             XamlRoot.Changed += OnXamlRootChanged;
@@ -94,7 +94,7 @@ public sealed partial class PlayerPage : Page
             var mediaArgument = Environment.GetCommandLineArgs().Skip(1).FirstOrDefault(argument => !argument.StartsWith("--", StringComparison.Ordinal));
             if (!string.IsNullOrWhiteSpace(mediaArgument)) await OpenMediaAsync(mediaArgument);
         }
-        catch (Exception ex) { ViewModel.ReportError($"播放器初始化失败：{ex.Message}"); }
+        catch (Exception ex) { ViewModel.ReportRenderingFailure($"播放器初始化失败：{ex.Message}"); }
     }
 
     private async void OnUnloaded(object sender, RoutedEventArgs e) => await ShutdownAsync();
@@ -315,6 +315,15 @@ public sealed partial class PlayerPage : Page
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
+        if (e.PropertyName == nameof(PlayerViewModel.HasTerminalFailure) && ViewModel.HasTerminalFailure)
+        {
+            _ready = false;
+            _autoHideTimer?.Stop();
+            _seekTimer?.Stop();
+            _volumeTimer?.Stop();
+            OpenMediaPanel.IsEnabled = TransportControls.IsEnabled = false;
+            return;
+        }
         if (e.PropertyName != nameof(PlayerViewModel.State)) return;
         WelcomePanel.Visibility = string.IsNullOrEmpty(ViewModel.State.CurrentUrl) ? Visibility.Visible : Visibility.Collapsed;
         SyncSliders();

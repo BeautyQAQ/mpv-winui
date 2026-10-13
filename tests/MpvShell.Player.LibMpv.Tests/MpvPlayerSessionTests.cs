@@ -140,6 +140,8 @@ public sealed class MpvPlayerSessionTests
                 if (item is BackendFaulted error) { fault = error; break; }
             fault.Should().NotBeNull();
             fault!.Message.Should().Contain("加载或播放媒体");
+            fault.Kind.Should().Be(PlayerErrorKind.Loading);
+            fault.IsTerminal.Should().BeFalse();
             var play = () => backend.PlayAsync(cancel.Token);
             await play.Should().ThrowAsync<InvalidOperationException>().WithMessage("请先打开媒体。");
         }

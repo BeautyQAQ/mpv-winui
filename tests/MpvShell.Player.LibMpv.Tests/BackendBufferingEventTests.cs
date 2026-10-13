@@ -7,6 +7,135 @@ namespace MpvShell.Player.LibMpv.Tests;
 public sealed class BackendBufferingEventTests
 {
     [Fact]
+    public async Task Overflow_should_deliver_a_repeated_identical_error_once_per_occurrence()
+    {
+        await using var events = new BackendEvents();
+        events.StartMedia();
+        events.Position(1);
+        await events.ReadThroughPositionAsync(1);
+
+        for (var occurrence = 0; occurrence < 2; occurrence++)
+        {
+            events.Publish(new(MpvEventId.QueueOverflow, Error: new InvalidOperationException("相同错误")));
+            var end = 513 + occurrence * 512;
+            for (var position = end - 511; position <= end; position++) events.Position(position);
+            (await events.ReadThroughPositionAsync(end)).OfType<BackendFaulted>()
+                .Should().Equal(new BackendFaulted("相同错误", PlayerErrorKind.EventQueue));
+        }
+
+        for (var position = 1026; position <= 1537; position++) events.Position(position);
+        (await events.ReadThroughPositionAsync(1537)).OfType<BackendFaulted>().Should().BeEmpty(
+            "已交付错误不能在下一次积压时重新弹出");
+    }
+
+    [Fact]
+    public async Task Overflow_should_restore_the_latest_tracks_info_and_error_in_publication_order()
+    {
+        await using var events = new BackendEvents();
+        events.StartMedia();
+        events.Position(1);
+        await events.ReadThroughPositionAsync(1);
+
+        events.Publish(new(MpvEventId.PropertyChange, "track-list", new object?[]
+        {
+            new Dictionary<string, object?> { ["type"] = "audio", ["id"] = 2L, ["lang"] = "zho", ["selected"] = true },
+        }));
+        events.Publish(new(MpvEventId.PropertyChange, "video-codec", "hevc"));
+        events.Buffer(true);
+        events.Publish(new(MpvEventId.EndFile, Value: 4, Error: new InvalidOperationException("读取失败")));
+        for (var position = 2; position <= 513; position++) events.Position(position);
+
+        var resumed = await events.ReadThroughPositionAsync(513);
+        resumed.OfType<TracksChanged>().Should().ContainSingle().Which.Tracks.Should().ContainSingle()
+            .Which.Id.Should().Be(2);
+        resumed.OfType<MediaInfoChanged>().Should().ContainSingle().Which.Snapshot.VideoCodec.Should().Be("hevc");
+        resumed.OfType<BackendFaulted>().Should().Equal(new BackendFaulted("读取失败"));
+        var trackIndex = resumed.FindIndex(item => item is TracksChanged);
+        var infoIndex = resumed.FindIndex(item => item is MediaInfoChanged);
+        var faultIndex = resumed.FindIndex(item => item is BackendFaulted);
+        trackIndex.Should().BeLessThan(infoIndex);
+        infoIndex.Should().BeLessThan(faultIndex);
+        faultIndex.Should().BeLessThan(resumed.FindIndex(item => item is PlaybackStateChanged));
+        resumed.OfType<PlaybackStateChanged>().Should().HaveCount(256);
+    }
+
+    [Fact]
+    public async Task Overflow_should_deliver_eof_once_and_not_replay_it_after_seeking_back()
+    {
+        await using var events = new BackendEvents();
+        events.StartMedia();
+        events.Position(1);
+        await events.ReadThroughPositionAsync(1);
+        events.Publish(new(MpvEventId.PropertyChange, "eof-reached", true));
+        for (var position = 2; position <= 513; position++) events.Position(position);
+        (await events.ReadThroughPositionAsync(513)).OfType<EndReached>().Should().ContainSingle();
+
+        events.Publish(new(MpvEventId.PropertyChange, "eof-reached", false));
+        for (var position = 514; position <= 1025; position++) events.Position(position);
+        (await events.ReadThroughPositionAsync(1025)).OfType<EndReached>().Should().BeEmpty();
+        events.Publish(new(MpvEventId.PropertyChange, "eof-reached", true));
+        for (var position = 1026; position <= 1537; position++) events.Position(position);
+        (await events.ReadThroughPositionAsync(1537)).OfType<EndReached>().Should().ContainSingle();
+    }
+
+    [Fact]
+    public async Task Overflow_should_restore_a_stopped_playback_state_even_when_only_info_events_survive()
+    {
+        await using var events = new BackendEvents();
+        events.StartMedia();
+        events.Publish(new(MpvEventId.PropertyChange, "pause", false));
+        events.Position(1);
+        await events.ReadThroughPositionAsync(1);
+        events.Publish(new(MpvEventId.EndFile, Value: 4, Error: new InvalidOperationException("读取失败")));
+        for (var frame = 1; frame <= 512; frame++)
+            events.Publish(new(MpvEventId.PropertyChange, "frame-drop-count", (long)frame));
+
+        var resumed = await events.ReadUntilAsync(item => item is MediaInfoChanged
+            { Snapshot.DecodeDiagnostics.PresentationDroppedFrames: 512 }, "末次诊断信息");
+        resumed.OfType<BackendFaulted>().Should().ContainSingle();
+        resumed.OfType<PlaybackStateChanged>().Should().ContainSingle().Which.State.IsPlaying.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Overflow_repair_should_use_the_surviving_event_snapshot_instead_of_a_later_error()
+    {
+        await using var events = new BackendEvents();
+        events.StartMedia();
+        events.Position(1);
+        await events.ReadThroughPositionAsync(1);
+        events.Publish(new(MpvEventId.QueueOverflow, Error: new InvalidOperationException("第一次错误")));
+        for (var position = 2; position <= 513; position++) events.Position(position);
+        events.Publish(new(MpvEventId.QueueOverflow, Error: new InvalidOperationException("第二次错误")));
+        events.Position(514);
+
+        var resumed = await events.ReadThroughPositionAsync(514);
+        resumed.OfType<BackendFaulted>().Select(item => item.Message).Should().Equal("第一次错误", "第二次错误");
+        resumed.First().Should().Be(new BackendFaulted("第一次错误", PlayerErrorKind.EventQueue));
+        resumed.FindLastIndex(item => item is BackendFaulted).Should()
+            .BeGreaterThan(resumed.FindIndex(item => item is PlaybackStateChanged { State.PositionSeconds: 513 }),
+                "第二次错误不能提前到先前的位置事件之前；错误之后还会发布同位置的停止快照");
+    }
+
+    [Fact]
+    public async Task Overflow_after_replacing_media_should_not_restore_the_previous_error_or_eof()
+    {
+        await using var events = new BackendEvents();
+        events.StartMedia();
+        events.Position(1);
+        await events.ReadThroughPositionAsync(1);
+        events.Publish(new(MpvEventId.QueueOverflow, Error: new InvalidOperationException("旧媒体错误")));
+        events.Publish(new(MpvEventId.EndFile, Value: 0));
+        events.StartMedia();
+        for (var position = 2; position <= 513; position++) events.Position(position);
+
+        var resumed = await events.ReadThroughPositionAsync(513);
+        resumed.OfType<BackendFaulted>().Should().BeEmpty();
+        resumed.OfType<EndReached>().Should().BeEmpty();
+        resumed.OfType<TracksChanged>().Should().ContainSingle().Which.Tracks.Should().BeEmpty();
+        resumed.OfType<MediaInfoChanged>().Should().ContainSingle().Which.Snapshot.VideoCodec.Should().BeNull();
+    }
+
+    [Fact]
     public async Task Cache_pause_should_publish_both_transitions_without_requiring_another_event()
     {
         await using var events = new BackendEvents();
@@ -182,7 +311,9 @@ public sealed class BackendBufferingEventTests
         events.Buffer(true);
         events.Position(2);
 
-        var ended = await events.ReadThroughPositionAsync(2);
+        await events.Backend.DisposeAsync();
+        var ended = new List<PlayerEvent>();
+        while (await events.ReadNextAsync() is { } item) ended.Add(item);
         ended.First().Should().Be(new BufferingChanged(false));
         ended.OfType<BufferingChanged>().Select(item => item.IsBuffering).Should().Equal(false);
         ended.OfType<BackendFaulted>().Should().ContainSingle();
