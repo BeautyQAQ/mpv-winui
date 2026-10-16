@@ -22,6 +22,7 @@ public sealed class LibMpvBackend : IPlayerBackend
     private bool _loaded;
     private bool _ended;
     private bool _awaitingStart;
+    private long? _pendingEntryId;
     private bool _mediaActive;
     private bool _isBuffering;
     private Exception? _terminalError;
@@ -68,6 +69,7 @@ public sealed class LibMpvBackend : IPlayerBackend
                     _events.ResetMedia();
                     _loadCompletion = waiting ? completion : null;
                     _awaitingStart = true;
+                    _pendingEntryId = null;
                     _mediaActive = false;
                     PublishBuffering(false);
                 }
@@ -206,6 +208,7 @@ public sealed class LibMpvBackend : IPlayerBackend
                     _loaded = false;
                     _ended = false;
                     _idle = true;
+                    _pendingEntryId = null;
                     _events.ClearEnd();
                     _loadCompletion?.TrySetException(error);
                     PublishState();
@@ -215,7 +218,14 @@ public sealed class LibMpvBackend : IPlayerBackend
 
             switch (playerEvent.Id)
             {
+                case MpvEventId.CommandReply when playerEvent.PlaylistEntryId is long entryId:
+                    // loadfile 的命令回复携带新条目的原生 playlist_entry_id；先于其 StartFile 更新归属期望。
+                    _pendingEntryId = entryId;
+                    break;
                 case MpvEventId.StartFile:
+                    // 归属校验：等待新加载期间只接受与 loadfile 回复 ID 一致的 StartFile。旧媒体的迟到
+                    // StartFile 若清除等待标记，紧随其后的旧 EndFile 会把仍在加载的新媒体误判为中止。
+                    if (_awaitingStart && playerEvent.PlaylistEntryId != _pendingEntryId) return;
                     _events.ResetMedia();
                     _awaitingStart = false;
                     _loaded = false;

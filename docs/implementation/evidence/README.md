@@ -9,6 +9,8 @@
 - [P1-02 事件积压补偿与播放列表跳转（2026-10-13）](P1-02-02-event-overflow-and-redirect.md)
 - [P1-02 错误分类、终态保护与 UI 批量派发（2026-10-13）](P1-02-03-error-contract-and-ui-dispatch.md)
 - [P1-02 seek 竞争、请求等待与跨加载边界（2026-10-13）](P1-02-04-seek-and-request-contract.md)
+- [P1-02 跨加载归属审计与条目 ID 修复（2026-10-16）](P1-02-05-cross-load-attribution.md)
+- [P1-02 验收汇总（2026-10-16）](P1-02-06-p1-02-acceptance.md)
 - [P1-01 固定媒体与性能场景（已关闭；PERF-01 已关闭）](P1-01-01-fixed-media-and-performance-scenarios.md)
 - [P1-01 RTX 3070 外机测试包（2026-09-22）](P1-01-02-rtx3070-test-package.md)
 - [P1-01 RTX 3070 日志复核（2026-10-02）](P1-01-03-rtx3070-log-review.md)

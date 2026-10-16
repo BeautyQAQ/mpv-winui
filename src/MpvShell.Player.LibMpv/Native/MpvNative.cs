@@ -117,6 +117,20 @@ internal struct MpvEventProperty
     internal nint Data;
 }
 
+// client.h v0.41.0：mpv_event_start_file { int64_t playlist_entry_id; }（自 API 1.108 起用于条目归属）。
+[StructLayout(LayoutKind.Sequential)]
+internal struct MpvEventStartFile
+{
+    internal long PlaylistEntryId;
+}
+
+// client.h v0.41.0：mpv_event_command { mpv_node result; }（自 API 1.102 起承载命令结果节点）。
+[StructLayout(LayoutKind.Sequential)]
+internal struct MpvEventCommand
+{
+    internal MpvNode Result;
+}
+
 [StructLayout(LayoutKind.Explicit, Size = 16)]
 internal struct MpvNode
 {

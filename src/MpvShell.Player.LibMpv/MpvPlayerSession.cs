@@ -358,6 +358,15 @@ public sealed partial class MpvPlayerSession : IMpvPlayerSession
         }
         if (nativeEvent.Id is MpvEventId.CommandReply or MpvEventId.GetPropertyReply or MpvEventId.SetPropertyReply)
         {
+            // loadfile 的命令回复携带新条目的原生 playlist_entry_id；归属信息先于请求等待发布，
+            // 即使调用方已取消等待（等待表已移除）也要让订阅者拿到它。
+            if (nativeEvent.Id == MpvEventId.CommandReply && nativeEvent.Error >= 0 && nativeEvent.Data != 0)
+            {
+                var command = Marshal.PtrToStructure<MpvEventCommand>(nativeEvent.Data);
+                if (MpvNodeReader.Read(command.Result) is Dictionary<string, object?> result
+                    && result.TryGetValue("playlist_entry_id", out var entry) && entry is long entryId)
+                    Publish(new SessionEvent(nativeEvent.Id, PlaylistEntryId: entryId));
+            }
             if (!_pending.TryGetValue(nativeEvent.ReplyUserData, out var pending)) return;
             if (nativeEvent.Error < 0)
                 pending.TrySetException(new MpvException("播放器请求", nativeEvent.Error));
@@ -377,7 +386,7 @@ public sealed partial class MpvPlayerSession : IMpvPlayerSession
             var end = Marshal.PtrToStructure<MpvEndFile>(nativeEvent.Data);
             Publish(new SessionEvent(nativeEvent.Id, Value: end.Reason,
                 Error: end.Reason == 4 ? new MpvException("加载或播放媒体", end.Error) : null,
-                PlaylistInsertCount: end.PlaylistInsertCount));
+                PlaylistInsertCount: end.PlaylistInsertCount, PlaylistEntryId: end.PlaylistEntryId));
         }
         else if (nativeEvent.Id == MpvEventId.LogMessage)
         {
@@ -392,6 +401,11 @@ public sealed partial class MpvPlayerSession : IMpvPlayerSession
             // 已丢失的状态不能继续驱动播放按钮；等待重新加载期间暂停实际音视频。
             TryPauseAfterFailure(_handle);
             Publish(new SessionEvent(nativeEvent.Id, Error: new InvalidOperationException("播放器事件队列溢出，请重新加载媒体。")));
+        }
+        else if (nativeEvent.Id == MpvEventId.StartFile)
+        {
+            var start = Marshal.PtrToStructure<MpvEventStartFile>(nativeEvent.Data);
+            Publish(new SessionEvent(nativeEvent.Id, PlaylistEntryId: start.PlaylistEntryId));
         }
         else
             Publish(new SessionEvent(nativeEvent.Id));
@@ -433,4 +447,5 @@ public sealed partial class MpvPlayerSession : IMpvPlayerSession
 }
 
 internal sealed record SessionEvent(MpvEventId Id, string? Property = null, object? Value = null,
-    Exception? Error = null, int PlaylistInsertCount = 0, PlayerErrorKind? ErrorKind = null);
+    Exception? Error = null, int PlaylistInsertCount = 0, PlayerErrorKind? ErrorKind = null,
+    long? PlaylistEntryId = null);
