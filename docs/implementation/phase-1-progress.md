@@ -1,8 +1,8 @@
 # Phase 1 实施进度
 
 > 总体状态：进行中；已建立工作包，Phase 1 尚未完成。
-> 最近完成：P1-00 基线、计划与发布入口；P1-01 / PERF-01 已关闭；P1-02 已关闭。
-> 当前工作包：P1-03 生命周期、页面重建与退出（P1-02 已收口；PERF-02 采样对照作为独立跟进项保留）。
+> 最近完成：P1-00 基线、计划与发布入口；P1-01 / PERF-01 已关闭；P1-02 已关闭；P1-03 已通过。
+> 当前工作包：P1-04 视频 HLS、字幕与媒体信息验收（P1-03 已收口；PERF-02 采样对照作为独立跟进项保留）。
 > 最后更新：2026-10-16
 > 执行计划：[Phase 1 计划](phase-1-plan.md)
 > 当前发布包：[发布状态](release-status.md)
@@ -11,7 +11,7 @@
 
 Phase 0 已在声明范围内通过，正式路线和基础实现继续沿用。Phase 1 的目标是生产级播放基础：固化现有模块、控制与状态契约、资源所有权、生命周期、媒体覆盖和发布流程。完整 UI、倍速交互、最近打开持久化等产品工作不自动进入本阶段。
 
-本轮已建立六个工作包，P1-00 文档、基线与产物入口核对通过。P1-01 的固定素材、场景、判定规则和测量工具已进入仓库；2026-09-22 在远程连接的 SDR 开发机上完成 Debug/Release 构建，两种配置各通过 14 项统计测试和 1 项测量链路自检。2026-10-02 复核用户带回的 9 月 22 日 RTX 3070 日志：4K 全屏 SDR/PQ 短时连续段约 60 fps，窗口 HDR→SDR 约 60 fps，正常 EOF 与退出；开头丢帧与混合统计段单独保留。2026-10-04 用户确认 GTX 1060 的 HDR→SDR 窗口和全屏此前复测正常，P1-01 / PERF-01 据此关闭；PERF-02 的采样对照仍保留为独立跟进项。2026-10-13 开始 P1-02，已复现并修复加载尚未提交时提前切换当前地址、屏蔽原媒体加载完成事件的问题，验证见 [加载取消边界记录](evidence/P1-02-01-load-cancellation-boundary.md)。同日继续修复后端事件积压丢失关键状态，以及播放列表 redirect 提前结束加载的问题，详见 [事件与 redirect 记录](evidence/P1-02-02-event-overflow-and-redirect.md)。随后补齐错误分类、非渲染终态保护及 UI 有界批量派发，并修复错误后内核仍播放的问题，详见 [错误与 UI 派发记录](evidence/P1-02-03-error-contract-and-ui-dispatch.md)。本轮继续修复 seek 回复竞争，补充请求取消/超时及真实跨加载边界回归，见 [seek 与请求契约记录](evidence/P1-02-04-seek-and-request-contract.md)。2026-10-16 完成收尾：对原生内部异步重排做跨加载归属审计，以 v0.41.0 源码核对、真实会话探针与托管注入确认等待期旧 StartFile 的守卫缺口，并以原生 `playlist_entry_id` 完成归属修复，见 [跨加载归属记录](evidence/P1-02-05-cross-load-attribution.md)；按计划条目完成 [P1-02 验收汇总](evidence/P1-02-06-p1-02-acceptance.md)，P1-02 标记通过，P1-03～P1-05 未开始。
+本轮已建立六个工作包，P1-00 文档、基线与产物入口核对通过。P1-01 的固定素材、场景、判定规则和测量工具已进入仓库；2026-09-22 在远程连接的 SDR 开发机上完成 Debug/Release 构建，两种配置各通过 14 项统计测试和 1 项测量链路自检。2026-10-02 复核用户带回的 9 月 22 日 RTX 3070 日志：4K 全屏 SDR/PQ 短时连续段约 60 fps，窗口 HDR→SDR 约 60 fps，正常 EOF 与退出；开头丢帧与混合统计段单独保留。2026-10-04 用户确认 GTX 1060 的 HDR→SDR 窗口和全屏此前复测正常，P1-01 / PERF-01 据此关闭；PERF-02 的采样对照仍保留为独立跟进项。2026-10-13 开始 P1-02，已复现并修复加载尚未提交时提前切换当前地址、屏蔽原媒体加载完成事件的问题，验证见 [加载取消边界记录](evidence/P1-02-01-load-cancellation-boundary.md)。同日继续修复后端事件积压丢失关键状态，以及播放列表 redirect 提前结束加载的问题，详见 [事件与 redirect 记录](evidence/P1-02-02-event-overflow-and-redirect.md)。随后补齐错误分类、非渲染终态保护及 UI 有界批量派发，并修复错误后内核仍播放的问题，详见 [错误与 UI 派发记录](evidence/P1-02-03-error-contract-and-ui-dispatch.md)。本轮继续修复 seek 回复竞争，补充请求取消/超时及真实跨加载边界回归，见 [seek 与请求契约记录](evidence/P1-02-04-seek-and-request-contract.md)。2026-10-16 完成收尾：对原生内部异步重排做跨加载归属审计，以 v0.41.0 源码核对、真实会话探针与托管注入确认等待期旧 StartFile 的守卫缺口，并以原生 `playlist_entry_id` 完成归属修复，见 [跨加载归属记录](evidence/P1-02-05-cross-load-attribution.md)；按计划条目完成 [P1-02 验收汇总](evidence/P1-02-06-p1-02-acceptance.md)，P1-02 标记通过。同日接续 P1-03：固化 UI、命令/事件、渲染三执行域及共享 core 的所有权与释放顺序，新增页面卸载挂起/重挂载恢复租约，并以真实 Frame 导航验证播放与暂停状态的页面重建，补齐恢复中关闭、加载中关闭、恢复中换媒体场景与关闭后资源释放核对；[所有权记录](evidence/P1-03-01-lifecycle-ownership-and-release-order.md)、[场景记录](evidence/P1-03-02-app-lifecycle-scenarios.md)与[验收汇总](evidence/P1-03-03-p1-03-acceptance.md)确认各验收条目满足，P1-03 标记通过，P1-04～P1-05 未开始。
 
 ## 2. 当前基线与发布身份
 
@@ -36,7 +36,7 @@ Phase 0 已在声明范围内通过，正式路线和基础实现继续沿用。
 | P1-00 基线、计划与发布入口 | 通过 | 2026-09-12 | 2026-09-12 | 计划/进度、基线证据与发布入口均已核验；本次只修改文档及解决方案文档索引 |
 | P1-01 固定媒体回归与性能场景复核 | 通过 | 2026-09-21 | 2026-10-04 | [P1-01 记录](evidence/P1-01-01-fixed-media-and-performance-scenarios.md)：用户确认 GTX 1060 HDR→SDR 窗口/全屏此前复测正常，PERF-01 关闭；PERF-02 采样对照作为独立跟进项保留 |
 | P1-02 状态、错误与命令契约 | 通过 | 2026-10-13 | 2026-10-16 | 已修复加载取消边界、后端积压丢失关键状态及播放列表 redirect 提前失败；[加载取消记录](evidence/P1-02-01-load-cancellation-boundary.md)、[事件与 redirect 记录](evidence/P1-02-02-event-overflow-and-redirect.md)。已补 [错误分类、非渲染终态及 UI 派发合并](evidence/P1-02-03-error-contract-and-ui-dispatch.md)、[seek 竞争与请求等待边界](evidence/P1-02-04-seek-and-request-contract.md)与[跨加载归属审计](evidence/P1-02-05-cross-load-attribution.md)；[验收汇总](evidence/P1-02-06-p1-02-acceptance.md)确认各验收条目满足 |
-| P1-03 生命周期、页面重建与退出 | 未开始 | — | — | 承接恢复租约与释放协调，补真实页面生命周期证据 |
+| P1-03 生命周期、页面重建与退出 | 通过 | 2026-10-16 | 2026-10-16 | [所有权与释放顺序](evidence/P1-03-01-lifecycle-ownership-and-release-order.md)、[应用内场景](evidence/P1-03-02-app-lifecycle-scenarios.md)、[验收汇总](evidence/P1-03-03-p1-03-acceptance.md)：页面卸载/重挂载、恢复中关闭、加载中关闭、恢复中换媒体均通过 |
 | P1-04 视频 HLS、字幕与媒体信息验收 | 未开始 | — | — | 补视频 HLS 和字幕真实呈现，不等同于完整交互开发 |
 | P1-05 发布可复现与 Phase 1 验收 | 未开始 | — | — | 等前述工作包完成，以最终目录验证后更新发布入口 |
 
@@ -60,7 +60,7 @@ Phase 0 已在声明范围内通过，正式路线和基础实现继续沿用。
 - **PERF-01：历史应用内慢帧。已关闭（2026-10-04）。** [2026-09-11 恢复记录](evidence/buffering-and-app-recovery-2026-09-11.md#整段播放结果与未解决的性能问题)曾记录 GTX 1060、4K60 SDR tone-map 约 14 fps；用户确认同一类 HDR→SDR 窗口和全屏场景此前复测正常。关闭依据和日志限制见 [P1-01 / PERF-01 用户复测收口](evidence/P1-01-05-gtx1060-user-acceptance.md)。
 - **PERF-02：原生功能报告中的掉帧。** 本轮 HEVC/AV1 的 105/110 次呈现掉帧来源于功能测试报告（前 60 帧后在渲染线程反复 Render + 读回）。P1-01 已定义场景 S4/S5 做"有采样 vs 无采样"对照，待执行。未完成复核前不宣称性能通过。
 - **MEDIA-01：媒体覆盖。** Phase 0 的 HLS 集成为 ADTS AAC 分片，P1-04 补视频 HLS；轨道状态测试不替代字幕真实呈现。
-- **LIFE-01：页面生命周期。** 已有同一 core 上的原生上下文恢复证据，P1-03 核对实际页面卸载、重新挂载与关闭竞态。
+- **LIFE-01：页面生命周期。已关闭（2026-10-16）。** 真实 Frame 导航卸载/重新挂载、恢复中关闭、加载中关闭与重复故障均通过；见 [P1-03 验收汇总](evidence/P1-03-03-p1-03-acceptance.md)。
 
 ### 沿用原决定延后
 
@@ -88,5 +88,8 @@ Phase 0 已在声明范围内通过，正式路线和基础实现继续沿用。
 | 2026-10-16 | P1-02 | 跨加载归属审计：核对 v0.41.0 事件次序与属性合并，修复等待期旧 StartFile 清除新加载等待标记的守卫缺口（原生 playlist_entry_id 归属） | 修复前定向 4 项 1 失败、3 通过（注入的旧 Start/End 对把在载媒体判为中止）；修复后同测试程序集 119 通过、0 失败。全量 x64 Debug/Release 构建均 0 警告/错误，各 285 通过、0 失败、5 项媒体/性能测试跳过 | `artifacts/p1-02-attribution/`（源码核对、misattribution 前后 TRX、debug-final/release-final 日志与 TRX）；[跨加载归属记录](evidence/P1-02-05-cross-load-attribution.md)；未做 GUI 人工验收或发布 |
 | 2026-10-16 | P1-02 验收 | 按计划 P1-02 验收条目汇总 P1-02-01～05 证据 | 五条验收条目均满足并在汇总中映射到可复核证据；P1-02 标记通过 | [P1-02 验收汇总](evidence/P1-02-06-p1-02-acceptance.md)；关闭不改变各记录限制（未 GUI 人工验收、未发布） |
 | 2026-10-16 | P1-03 输入 | 开始生命周期工作包：审计 UI、命令/事件、渲染三执行域与共享 core 的所有权及释放顺序，核对既有恢复证据 | 审计完成并确定缺口：真实页面卸载/重新挂载无承接路径；释放播放中的 render context 前缺少视频挂起步骤；恢复中关闭/换媒体、加载中关闭缺少场景证据；存在跨域锁顺序隐患待消除 | 实现与场景执行待办，产物记录于 `artifacts/p1-03/`；沿用 P1-01 固定素材与恢复脚本 |
+| 2026-10-16 | P1-03 | 固化所有权与释放顺序：新增卸载挂起/重挂载恢复租约、渲染器释放前挂起、Frame 承载页面与应用级关闭收口，消除挂起租约与自动重建的锁顺序隐患 | x64 Debug/Release 构建均 0 警告/错误；全量测试各 293 通过、0 失败、5 项素材测试跳过（LibMpv 123、App 100、Rendering 68/73、Abstractions 2） | `artifacts/p1-03/`（构建与测试日志、TRX）；[所有权记录](evidence/P1-03-01-lifecycle-ownership-and-release-order.md)；保留渲染集成首跑 3 项断言失败与修正历史 |
+| 2026-10-16 | P1-03 | 真实页面生命周期场景：Frame 导航卸载/重挂载（播放/暂停）、恢复中关闭、加载中关闭、恢复中换媒体；合成、4K60 HEVC 硬解与含音轨 TS 素材 | 应用内默认 10 场景与 4K/TS 补充 4 场景全部通过；关闭后会话与渲染器均已释放、重复关闭幂等、会话日志释放标记核对通过 | `artifacts/p1-03/app-full-final/`、`app-4k-final/`、`app-ts-final/`；[场景记录](evidence/P1-03-02-app-lifecycle-scenarios.md)；故障为注入，非真实驱动重置 |
+| 2026-10-16 | P1-03 复验 | 冻结工作区（含探针 `TracksBefore` 字段）重新构建并全量复跑；处理最终树首跑出现的测试服务器收尾竞态 | 构建均 0 警告/错误；Release 首跑直接通过；Debug 首跑 1 项 `BackendSeekConcurrencyTests` 收尾竞态失败（`HttpMediaServer` 停听与在途 Accept 竞争抛 `ObjectDisposedException`，与本包产品改动无关），补收尾 catch 后两配置复跑均 293 通过、0 失败、5 项素材测试跳过 | `artifacts/p1-03/debug-build-final.log`、`release-build-final.log`、`debug-tests-final3/`、`release-tests-final3/`（失败首跑保留 `debug-tests-final2/`）；[所有权记录](evidence/P1-03-01-lifecycle-ownership-and-release-order.md) §4 |
 
 每包结束时追加实际执行的命令、测试配置、素材、提交和证据；保留失败记录。只有本计划列明的范围内验收全部满足，才将该包标记通过。Phase 1 需 P1-00～P1-05 全部验收后才能完成。

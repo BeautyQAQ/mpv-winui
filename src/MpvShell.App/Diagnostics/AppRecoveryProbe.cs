@@ -367,6 +367,7 @@ internal sealed class AppRecoveryProbe
         var mainWindow = (MainWindow)((App)Application.Current).MainWindowInstance!;
         var frame = mainWindow.DebugRootFrame;
         var tracksBefore = vm.Tracks.Select(track => track.Id).ToArray();
+        report["TracksBefore"] = tracksBefore;
         var nextPage = WaitForNextPageReadyAsync(TimeSpan.FromSeconds(25));
 
         // 真实卸载：Frame 导航触发 Unloaded，页面释放渲染器（含视频挂起），共享会话保持存活。

@@ -48,6 +48,8 @@ internal sealed class HttpMediaServer : IAsyncDisposable
         }
         catch (OperationCanceledException) when (_shutdown.IsCancellationRequested) { }
         catch (SocketException) when (_shutdown.IsCancellationRequested) { }
+        // 释放时 Stop() 关闭侦听套接字，在途 Accept 可能以 ObjectDisposedException 结束。
+        catch (ObjectDisposedException) when (_shutdown.IsCancellationRequested) { }
     }
 
     private async Task HandleAsync(TcpClient client)
