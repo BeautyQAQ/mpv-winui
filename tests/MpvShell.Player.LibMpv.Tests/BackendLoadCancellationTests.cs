@@ -135,6 +135,30 @@ public sealed class BackendLoadCancellationTests
         (await session.GetPropertyAsync("path", timeout.Token)).Should().Be(next.MediaUrl);
     }
 
+    [Fact]
+    public async Task Disposing_the_backend_while_a_held_load_is_in_flight_should_release_promptly()
+    {
+        await using var server = new HttpMediaServer(holdMedia: true);
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        await using var session = CreateSession();
+        await using var backend = new LibMpvBackend(session);
+        await backend.InitializeAsync(timeout.Token);
+        var load = backend.LoadUrlAsync(server.MediaUrl, timeout.Token);
+        // 服务端已经收到请求但尚未响应：加载真实处于进行中。
+        await server.MediaRequested.WaitAsync(timeout.Token);
+
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        await backend.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10));
+        clock.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(10), "加载中关闭不能被挂起的加载拖住");
+
+        // 进行中的加载以已释放异常结束，不允许悬挂。
+        Func<Task> wait = () => load;
+        await wait.Should().ThrowAsync<ObjectDisposedException>();
+        var closed = () => session.GetPropertyAsync("pause", CancellationToken.None);
+        await closed.Should().ThrowAsync<ObjectDisposedException>();
+        server.ReleaseMedia();
+    }
+
     private static MpvPlayerSession CreateSession() => new(new Dictionary<string, string> { ["ao"] = "null" });
 
     private static async Task<List<PlayerEvent>> ReadUntilAsync(LibMpvBackend backend,

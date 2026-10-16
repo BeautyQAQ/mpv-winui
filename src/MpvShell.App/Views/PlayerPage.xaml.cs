@@ -28,12 +28,18 @@ public sealed partial class PlayerPage : Page
     private bool _scrubbing;
     private bool _gestureBusy;
     private Task? _initializationTask;
-    private Task? _shutdownTask;
+    private Task? _releaseTask;
     private DisplayOutputMonitor? _displayOutputMonitor;
     private bool _outputRefreshRequested;
     private bool _outputRefreshRunning;
     private Task _outputRefreshTask = Task.CompletedTask;
     private readonly D3D11VideoSurfaceRenderer _videoSurfaceRenderer = new();
+    // 启动参数只在首个页面实例消费；同进程内页面重新挂载不得重放启动加载。
+    private static int _startupMediaClaimed;
+#if DEBUG
+    /// <summary>恢复验收探针使用：页面重新挂载后取得新页面的渲染器。</summary>
+    internal D3D11VideoSurfaceRenderer DebugRenderer => _videoSurfaceRenderer;
+#endif
     public PlayerViewModel ViewModel { get; }
 
     public PlayerPage()
@@ -63,9 +69,9 @@ public sealed partial class PlayerPage : Page
         _initializationTask = InitializePlayerAsync();
         await _initializationTask;
 #if DEBUG
-        await Diagnostics.AppRecoveryProbe.RunIfRequestedAsync(ViewModel, _videoSurfaceRenderer,
+        await Diagnostics.AppRecoveryProbe.RunIfRequestedAsync(this, ViewModel, _videoSurfaceRenderer,
             ((App)Application.Current).Services.GetRequiredService<IMpvPlayerSession>(),
-            ShutdownAsync, ((App)Application.Current).MainWindowInstance!, _ready,
+            ((MainWindow)((App)Application.Current).MainWindowInstance!).ShutdownPlayerAsync, _ready,
             () => OpenMediaPanel.IsEnabled || TransportControls.IsEnabled);
 #endif
     }
@@ -76,10 +82,13 @@ public sealed partial class PlayerPage : Page
         {
             await ViewModel.InitializeAsync();
             if (!ViewModel.IsInitialized || ViewModel.HasTerminalFailure) return;
-            var session = ((App)Application.Current).Services.GetRequiredService<IMpvPlayerSession>();
+            var session = ((App)Application.Current).Services.GetRequiredService<MpvPlayerSession>();
             await _videoSurfaceRenderer.InitializeAsync(session, CancellationToken.None);
+            if (_releaseTask is not null || ViewModel.HasTerminalFailure) return;
             await _videoSurfaceRenderer.AttachAsync(VideoSurface, CancellationToken.None);
-            if (_shutdownTask is not null || ViewModel.HasTerminalFailure) return;
+            if (_releaseTask is not null || ViewModel.HasTerminalFailure) return;
+            // 页面重新挂载或同进程内重建页面后恢复会话挂起的视频；首次启动时为 no-op。
+            await session.ResumeVideoAfterDetachAsync(CancellationToken.None);
             _ready = true;
             OpenMediaPanel.IsEnabled = TransportControls.IsEnabled = true;
             XamlRoot.Changed += OnXamlRootChanged;
@@ -92,16 +101,22 @@ public sealed partial class PlayerPage : Page
             CreateTimers();
             SyncSliders();
             var mediaArgument = Environment.GetCommandLineArgs().Skip(1).FirstOrDefault(argument => !argument.StartsWith("--", StringComparison.Ordinal));
-            if (!string.IsNullOrWhiteSpace(mediaArgument)) await OpenMediaAsync(mediaArgument);
+            // 只有首个页面实例消费启动媒体参数；后续重新挂载保持当前媒体，不重新打开。
+            if (!string.IsNullOrWhiteSpace(mediaArgument) && Interlocked.Exchange(ref _startupMediaClaimed, 1) == 0)
+                await OpenMediaAsync(mediaArgument);
+#if DEBUG
+            Diagnostics.AppRecoveryProbe.NotifyPageReady(this);
+#endif
         }
         catch (Exception ex) { ViewModel.ReportRenderingFailure($"播放器初始化失败：{ex.Message}"); }
     }
 
-    private async void OnUnloaded(object sender, RoutedEventArgs e) => await ShutdownAsync();
+    private async void OnUnloaded(object sender, RoutedEventArgs e) => await ReleaseAsync();
 
-    public Task ShutdownAsync() => _shutdownTask ??= ShutdownCoreAsync();
+    /// <summary>释放页面自身资源（渲染器、计时器、事件订阅）；共享播放会话由应用关闭流程销毁。</summary>
+    public Task ReleaseAsync() => _releaseTask ??= ReleaseCoreAsync();
 
-    private async Task ShutdownCoreAsync()
+    private async Task ReleaseCoreAsync()
     {
         _ready = false;
         _autoHideTimer?.Stop();
@@ -122,13 +137,14 @@ public sealed partial class PlayerPage : Page
         ViewModel.PropertyChanged -= OnViewModelPropertyChanged;
         _videoSurfaceRenderer.RenderingFailed -= OnRenderingFailed;
         _videoSurfaceRenderer.OutputStatusChanged -= OnOutputStatusChanged;
-        try { await _videoSurfaceRenderer.DisposeAsync(); }
-        finally { await ViewModel.DisposeAsync(); }
+        // 释放渲染器会先挂起会话视频（若有活动媒体）并归还 render context，供重新挂载恢复；
+        // 这里不销毁共享会话，窗口关闭与应用退出由 MainWindow.ShutdownPlayerAsync 统一收口。
+        await _videoSurfaceRenderer.DisposeAsync();
     }
 
     private void OnRenderingFailed(string message) => DispatcherQueue.TryEnqueue(() =>
     {
-        if (_shutdownTask is not null) return;
+        if (_releaseTask is not null) return;
         _ready = false;
         _autoHideTimer?.Stop();
         _seekTimer?.Stop();
@@ -152,7 +168,7 @@ public sealed partial class PlayerPage : Page
 
     private void QueueOutputRefresh()
     {
-        if (!_ready || _shutdownTask is not null) return;
+        if (!_ready || _releaseTask is not null) return;
         _outputRefreshRequested = true;
         if (_outputRefreshRunning) return;
         _outputRefreshRunning = true;
@@ -163,7 +179,7 @@ public sealed partial class PlayerPage : Page
     {
         try
         {
-            while (_outputRefreshRequested && _ready && _shutdownTask is null)
+            while (_outputRefreshRequested && _ready && _releaseTask is null)
             {
                 _outputRefreshRequested = false;
                 try
@@ -289,7 +305,7 @@ public sealed partial class PlayerPage : Page
 
     private async void OnPlayerKeyDown(object sender, KeyRoutedEventArgs e)
     {
-        if (_shutdownTask is not null) return;
+        if (_releaseTask is not null) return;
         var focusedControl = FocusManager.GetFocusedElement(XamlRoot);
         if (e.Key == VirtualKey.F11) { ToggleFullscreen(); e.Handled = true; }
         else if (e.Key == VirtualKey.Escape)

@@ -269,6 +269,13 @@ public sealed partial class D3D11VideoSurfaceRenderer : IVideoSurfaceRenderer
             if (_disposed) return;
             if (_worker is not null)
             {
+                // 释放 render context 前先挂起会话视频：直接释放活动 context 会使 mpv 把视频轨
+                // 标记为失败。挂起状态由重新挂载方恢复；应用退出时不恢复，随会话一起销毁。
+                if (_session is not null)
+                {
+                    try { await _session.SuspendVideoForDetachAsync(CancellationToken.None).ConfigureAwait(false); }
+                    catch (Exception ex) { Log($"释放渲染链前挂起视频失败，继续释放：{ex}"); }
+                }
                 try { await DetachSurfaceCoreAsync().ConfigureAwait(false); }
                 catch (Exception ex)
                 {

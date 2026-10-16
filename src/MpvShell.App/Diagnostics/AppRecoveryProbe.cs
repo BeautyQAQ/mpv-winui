@@ -5,6 +5,7 @@ using System.Runtime.InteropServices;
 using System.Text.Json;
 using Microsoft.UI.Xaml;
 using MpvShell.App.ViewModels;
+using MpvShell.App.Views;
 using MpvShell.Player.LibMpv;
 using MpvShell.Rendering.WinUI;
 using Vortice.Direct3D11;
@@ -17,6 +18,10 @@ namespace MpvShell.App.Diagnostics;
 /// <summary>由验收脚本显式启用，在真实 PlayerPage 内运行。所有 GPU 读回均限于 Debug 测试。</summary>
 internal sealed class AppRecoveryProbe
 {
+    private const int RecoveryHoldMilliseconds = 2000;
+    private static int _started;
+    private static readonly object PageWaiterGate = new();
+    private static TaskCompletionSource<PlayerPage>? _pageWaiter;
     private readonly List<string> _stages = [];
     private TaskCompletionSource<FrameSample>? _sample;
     private (TaskCompletionSource<FrameSample> Completion, FrameSample Frame)? _pendingPresentation;
@@ -24,31 +29,64 @@ internal sealed class AppRecoveryProbe
     private int _faultsRemaining;
     private int _faultsThrown;
     private int _resizeFaultPending;
+    private int _holdNextCreate;
     private readonly ConcurrentQueue<int> _faultGenerations = new();
+    private readonly TaskCompletionSource _recoveryHoldEntered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private D3D11VideoSurfaceRenderer? _latestRenderer;
+    private Task? _pendingLoad;
 
-    internal static async Task RunIfRequestedAsync(PlayerViewModel vm, D3D11VideoSurfaceRenderer renderer,
-        IMpvPlayerSession playerSession, Func<Task> shutdown, Window window, bool ready,
-        Func<bool> playbackControlsEnabled)
+    /// <summary>页面初始化完成（渲染器已附加、挂起视频已恢复）后由 PlayerPage 通知恢复探针。</summary>
+    internal static void NotifyPageReady(PlayerPage page)
+    {
+        lock (PageWaiterGate) _pageWaiter?.TrySetResult(page);
+    }
+
+    private static Task<PlayerPage> WaitForNextPageReadyAsync(TimeSpan timeout)
+    {
+        TaskCompletionSource<PlayerPage> waiter;
+        lock (PageWaiterGate)
+        {
+            waiter = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            _pageWaiter = waiter;
+        }
+        return waiter.Task.WaitAsync(timeout);
+    }
+
+    internal static async Task RunIfRequestedAsync(PlayerPage page, PlayerViewModel vm, D3D11VideoSurfaceRenderer renderer,
+        IMpvPlayerSession playerSession, Func<Task> shutdown, bool ready, Func<bool> playbackControlsEnabled)
     {
         var arguments = Environment.GetCommandLineArgs();
         var reportPath = GetArgument(arguments, "--recovery-test-report=");
         if (reportPath is null) return;
+        // 页面重新挂载会再次进入本入口；每个进程只运行一个探针实例。
+        if (Interlocked.Exchange(ref _started, 1) != 0) return;
         var mode = GetArgument(arguments, "--recovery-test-mode=") ?? "playing";
-        var probe = new AppRecoveryProbe();
+        var probe = new AppRecoveryProbe { _latestRenderer = renderer };
+        var mainWindow = (MainWindow)((App)Application.Current).MainWindowInstance!;
+        var session = (MpvPlayerSession)playerSession;
         var report = new Dictionary<string, object?> { ["Status"] = "Failed", ["Mode"] = mode,
             ["StartedAtUtc"] = DateTimeOffset.UtcNow, ["Stages"] = probe._stages };
         try
         {
             if (!Path.IsPathFullyQualified(reportPath)) throw new ArgumentException("验收报告必须使用绝对路径。");
-            if (mode is not ("playing" or "paused" or "immediate-failure" or "rebuild-failure" or "resize" or "playback" or "performance")) throw new ArgumentException("未知验收模式。");
+            if (mode is not ("playing" or "paused" or "immediate-failure" or "rebuild-failure" or "resize" or "playback"
+                or "performance" or "page-rebuild-playing" or "page-rebuild-paused" or "close-during-recovery"
+                or "close-during-load" or "recovery-media-switch")) throw new ArgumentException("未知验收模式。");
             if (!ready) throw new InvalidOperationException(vm.ErrorMessage ?? "播放器初始化未完成。");
-            if (string.IsNullOrEmpty(vm.State.CurrentUrl)) throw new InvalidOperationException("验收需要指定媒体。");
-            var session = (MpvPlayerSession)playerSession;
-            await session.SetPropertyAsync("mute", true, CancellationToken.None);
             report["Device"] = await renderer.GetDeviceInfoAsync(CancellationToken.None);
+            if (mode == "close-during-load")
+            {
+                // 媒体尚在加载即请求关闭；finally 统一执行关闭、释放核对与报告。
+                await probe.RunCloseDuringLoadAsync(vm, arguments, report);
+                report["Status"] = "Passed";
+                return;
+            }
+            if (string.IsNullOrEmpty(vm.State.CurrentUrl)) throw new InvalidOperationException("验收需要指定媒体。");
+            await session.SetPropertyAsync("mute", true, CancellationToken.None);
             await renderer.SetTestCallbacksAsync(probe.BeforeRender, probe.ReadFrame,
                 probe.OnPresented, () =>
                 {
+                    probe.HoldNextCreateIfRequested();
                     if (mode == "rebuild-failure") throw new InvalidOperationException("验收注入：图形设备创建失败。");
                 }, generation =>
                 {
@@ -79,7 +117,7 @@ internal sealed class AppRecoveryProbe
                 return;
             }
 
-            if (mode == "paused")
+            if (mode is "paused" or "page-rebuild-paused")
             {
                 await vm.TogglePlayPauseCommand.ExecuteAsync(null);
                 await probe.UntilAsync(() => !vm.State.IsPlaying, vm, "等待暂停");
@@ -104,12 +142,38 @@ internal sealed class AppRecoveryProbe
             report["NativePositionBefore"] = nativePositionBefore;
             report["PausedBefore"] = !vm.State.IsPlaying;
 
+            if (mode is "page-rebuild-playing" or "page-rebuild-paused")
+            {
+                await probe.RebuildPageAsync(page, vm, session, renderer, report, mode, initial,
+                    pathBefore, videoTrackBefore, nativePositionBefore,
+                    arguments.Contains("--recovery-test-animated-pattern", StringComparer.Ordinal));
+                report["Status"] = "Passed";
+                return;
+            }
+            if (mode == "close-during-recovery")
+            {
+                await probe.CloseDuringRecoveryAsync(vm, report);
+                report["Status"] = "Passed";
+                return;
+            }
+            if (mode == "recovery-media-switch")
+            {
+                var switchPath = GetArgument(arguments, "--recovery-test-switch-media=")
+                    ?? throw new ArgumentException("recovery-media-switch 需要 --recovery-test-switch-media。");
+                if (!Path.IsPathFullyQualified(switchPath) || !File.Exists(switchPath))
+                    throw new ArgumentException("换入媒体必须是存在的绝对路径。");
+                await probe.SwitchMediaDuringRecoveryAsync(vm, session, report, switchPath,
+                    arguments.Contains("--recovery-test-animated-pattern", StringComparer.Ordinal));
+                report["Status"] = "Passed";
+                return;
+            }
+
             if (mode == "resize")
             {
                 Interlocked.Exchange(ref probe._resizeFaultPending, 1);
-                var size = window.AppWindow.Size;
+                var size = mainWindow.AppWindow.Size;
                 // 由真实 WinUI SizeChanged -> PlayerPage.ResizeVideoAsync 触发恢复。
-                window.AppWindow.Resize(new SizeInt32(size.Width + 32, size.Height + 24));
+                mainWindow.AppWindow.Resize(new SizeInt32(size.Width + 32, size.Height + 24));
             }
             else
             {
@@ -207,9 +271,27 @@ internal sealed class AppRecoveryProbe
             report["InjectedFaultGenerations"] = probe._faultGenerations.ToArray();
             try
             {
+                var shutdownClock = Stopwatch.StartNew();
                 await shutdown().WaitAsync(TimeSpan.FromSeconds(15));
                 probe.Stage("页面关闭完成，渲染线程和 mpv 会话均已释放");
                 report["ShutdownCompleted"] = true;
+                report["ShutdownSeconds"] = Math.Round(shutdownClock.Elapsed.TotalSeconds, 3);
+                // 释放核对：关闭后会话与渲染器不得还能接受操作；重复关闭必须幂等。
+                report["SessionReleased"] = await IsSessionReleasedAsync(session);
+                report["RendererReleased"] = await IsRendererReleasedAsync(probe._latestRenderer);
+                await shutdown().WaitAsync(TimeSpan.FromSeconds(10));
+                report["ShutdownRepeatSafe"] = true;
+                if (probe._pendingLoad is not null)
+                {
+                    try { await probe._pendingLoad.WaitAsync(TimeSpan.FromSeconds(5)); }
+                    catch (Exception) { /* 预期以已释放异常结束；完成性单独记录。 */ }
+                    report["PendingLoadEndedAfterShutdown"] = probe._pendingLoad.IsCompleted;
+                }
+                if (report["SessionReleased"] is not true || report["RendererReleased"] is not true)
+                {
+                    report["Status"] = "Failed";
+                    report["ShutdownError"] = "关闭后会话或渲染器仍可响应操作。";
+                }
             }
             catch (Exception ex) { report["Status"] = "Failed"; report["ShutdownError"] = ex.ToString(); }
             try
@@ -218,8 +300,153 @@ internal sealed class AppRecoveryProbe
                 await File.WriteAllTextAsync(reportPath, JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true }));
             }
             catch (Exception ex) { Trace.WriteLine($"写入应用验收报告失败：{ex}"); }
-            window.Close();
+            mainWindow.Close();
         }
+    }
+
+    private async Task RunCloseDuringLoadAsync(PlayerViewModel vm, string[] arguments, Dictionary<string, object?> report)
+    {
+        var loadUrl = GetArgument(arguments, "--recovery-test-load-url=")
+            ?? throw new ArgumentException("close-during-load 需要 --recovery-test-load-url。");
+        if (!loadUrl.StartsWith("http://", StringComparison.OrdinalIgnoreCase))
+            throw new ArgumentException("加载中关闭验收需要 http 地址。");
+        report["LoadUrl"] = loadUrl;
+        vm.UrlText = loadUrl;
+        // 不等待加载完成：关闭发生在媒体仍在加载的窗口内。
+        _pendingLoad = vm.OpenUrlCommand.ExecuteAsync(null);
+        await UntilAsync(() => Equals(vm.State.CurrentUrl, loadUrl), vm, "等待加载被原生受理", allowError: true,
+            timeout: TimeSpan.FromSeconds(15));
+        report["LoadAccepted"] = true;
+        report["BufferingWhileLoading"] = vm.IsBuffering;
+        Stage("媒体仍处于加载中，准备关闭应用");
+    }
+
+    private async Task CloseDuringRecoveryAsync(PlayerViewModel vm, Dictionary<string, object?> report)
+    {
+        Interlocked.Exchange(ref _holdNextCreate, 1);
+        Interlocked.Exchange(ref _faultsRemaining, 1);
+        await _latestRenderer!.RequestTestFrameAsync();
+        await UntilAsync(() => Volatile.Read(ref _faultsThrown) >= 1, vm, "等待渲染故障注入", allowError: true);
+        await _recoveryHoldEntered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        report["FaultsThrown"] = Volatile.Read(ref _faultsThrown);
+        report["RecoveryHoldMilliseconds"] = RecoveryHoldMilliseconds;
+        Stage("自动重建持有生命周期锁与视频租约期间请求关闭");
+    }
+
+    private async Task SwitchMediaDuringRecoveryAsync(PlayerViewModel vm, MpvPlayerSession session,
+        Dictionary<string, object?> report, string switchPath, bool animated)
+    {
+        Interlocked.Exchange(ref _holdNextCreate, 1);
+        Interlocked.Exchange(ref _faultsRemaining, 1);
+        await _latestRenderer!.RequestTestFrameAsync();
+        await UntilAsync(() => Volatile.Read(ref _faultsThrown) >= 1, vm, "等待渲染故障注入", allowError: true);
+        await _recoveryHoldEntered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        report["FaultsThrown"] = Volatile.Read(ref _faultsThrown);
+        report["SwitchMedia"] = switchPath;
+        // 恢复持有播放租约期间提交换媒体：加载排队等待，恢复不得把旧媒体状态或错误带给新文件。
+        vm.UrlText = switchPath;
+        var load = vm.OpenUrlCommand.ExecuteAsync(null);
+        await load.WaitAsync(TimeSpan.FromSeconds(40));
+        await UntilAsync(() => vm.State.IsPlaying && vm.State.PositionSeconds > 0.3, vm, "等待换入媒体开始播放");
+        Require(vm.ErrorMessage is null, "恢复中换媒体不应留下错误提示。");
+        Require(Equals(await session.GetPropertyAsync("path", CancellationToken.None), switchPath), "最终媒体必须是换入的文件。");
+        Require(Equals(vm.State.CurrentUrl, switchPath), "页面当前地址必须指向换入的文件。");
+        var first = await CaptureAsync(_latestRenderer!);
+        await Task.Delay(600);
+        var second = await CaptureAsync(_latestRenderer!);
+        var change = first.Difference(second);
+        report["SwitchPixelChange"] = change;
+        if (animated) Require(change > 0.001, "换入的媒体必须真正在播放，不能是冻结帧。");
+        Stage("恢复期间提交的换媒体在租约释放后加载成功，旧状态未回写");
+    }
+
+    private async Task RebuildPageAsync(PlayerPage page, PlayerViewModel vm, MpvPlayerSession session,
+        D3D11VideoSurfaceRenderer oldRenderer, Dictionary<string, object?> report, string mode, FrameSample baseline,
+        object? pathBefore, object? videoTrackBefore, double positionBefore, bool animated)
+    {
+        var mainWindow = (MainWindow)((App)Application.Current).MainWindowInstance!;
+        var frame = mainWindow.DebugRootFrame;
+        var tracksBefore = vm.Tracks.Select(track => track.Id).ToArray();
+        var nextPage = WaitForNextPageReadyAsync(TimeSpan.FromSeconds(25));
+
+        // 真实卸载：Frame 导航触发 Unloaded，页面释放渲染器（含视频挂起），共享会话保持存活。
+        frame.Navigate(typeof(BlankPage));
+        await page.ReleaseAsync();
+        report["PageReleased"] = true;
+        report["OldRendererReleased"] = await IsRendererReleasedAsync(oldRenderer);
+
+        // 卸载窗口内媒体必须保持受控暂停，不能前进、终止或恢复旧画面。
+        await Task.Delay(700);
+        var detachedPause = await session.GetPropertyAsync("pause", CancellationToken.None) is true;
+        var detachedPosition = Convert.ToDouble(await session.GetPropertyAsync("time-pos", CancellationToken.None));
+        report["DetachedPause"] = detachedPause;
+        report["DetachedPosition"] = detachedPosition;
+        Require(detachedPause, "卸载期间必须保持媒体暂停，避免视频停用后失控播放。");
+        Require(Math.Abs(detachedPosition - positionBefore) < 0.2, "卸载期间媒体位置不能前进或重置。");
+
+        // 真实重新挂载：新页面实例重新初始化渲染器并恢复挂起的视频。
+        frame.Navigate(typeof(PlayerPage));
+        var page2 = await nextPage;
+        var renderer2 = page2.DebugRenderer;
+        _latestRenderer = renderer2;
+        report["DeviceAfterRebuild"] = await renderer2.GetDeviceInfoAsync(CancellationToken.None);
+        await renderer2.SetTestCallbacksAsync(BeforeRender, ReadFrame, OnPresented, null, null);
+        var restored = await WaitForImageAsync(renderer2, vm, 1);
+        report["RestoredFrame"] = restored.Summary;
+        Require(Equals(pathBefore, await session.GetPropertyAsync("path", CancellationToken.None)), "页面重建应保留当前媒体。");
+        Require(Equals(videoTrackBefore, await session.GetPropertyAsync("vid", CancellationToken.None)), "页面重建应恢复原视频轨。");
+        Require(vm.Tracks.Select(track => track.Id).SequenceEqual(tracksBefore), "页面重建后轨道列表必须保持。");
+        Require(vm.ErrorMessage is null, "页面重建不应留下错误提示。");
+
+        if (mode == "page-rebuild-paused")
+        {
+            var positionAfter = await WaitForPausedPositionAsync(session);
+            report["PositionAfter"] = positionAfter;
+            Require(!vm.State.IsPlaying, "页面重建不能解除用户暂停。");
+            Require(await session.GetPropertyAsync("pause", CancellationToken.None) is true, "mpv 应仍处于暂停状态。");
+            Require(Math.Abs(positionAfter - positionBefore) < 0.001, "重建后原生暂停位置不能改变。");
+            var difference = baseline.Difference(restored);
+            report["PausedPixelDifference"] = difference;
+            var relativeDifference = difference / Math.Max(baseline.Colors.Average(), restored.Colors.Average());
+            report["PausedRelativePixelDifference"] = relativeDifference;
+            Require(difference < 2.0 / 255 && relativeDifference < 0.02, "重建后应保留同一暂停画面。");
+        }
+        else
+        {
+            await UntilAsync(() => vm.State.IsPlaying, vm, "等待重建后继续播放");
+            var resumedFrames = Interlocked.Read(ref _frames);
+            await UntilAsync(() => vm.State.PositionSeconds > positionBefore + 0.5
+                && Interlocked.Read(ref _frames) >= resumedFrames + 15, vm, "等待重建后连续呈现");
+            var laterFrame = await CaptureAsync(renderer2);
+            var change = restored.Difference(laterFrame);
+            report["PlayingPixelChangeAfterRebuild"] = change;
+            if (animated) Require(change > 0.001, "动态图案在页面重建后必须继续变化，不能是冻结帧。");
+        }
+        Stage("真实页面已卸载并重新挂载，媒体、轨道与画面保持");
+    }
+
+    private void HoldNextCreateIfRequested()
+    {
+        if (Interlocked.Exchange(ref _holdNextCreate, 0) == 1)
+        {
+            _recoveryHoldEntered.TrySetResult();
+            Thread.Sleep(RecoveryHoldMilliseconds);
+        }
+    }
+
+    private static async Task<bool> IsSessionReleasedAsync(MpvPlayerSession session)
+    {
+        try { await session.GetPropertyAsync("pause", CancellationToken.None); return false; }
+        catch (ObjectDisposedException) { return true; }
+        catch (Exception) { return false; }
+    }
+
+    private static async Task<bool> IsRendererReleasedAsync(D3D11VideoSurfaceRenderer? renderer)
+    {
+        if (renderer is null) return true;
+        try { await renderer.GetDeviceInfoAsync(CancellationToken.None); return false; }
+        catch (InvalidOperationException) { return true; }
+        catch (Exception) { return false; }
     }
 
     private static string? GetArgument(string[] arguments, string prefix) =>

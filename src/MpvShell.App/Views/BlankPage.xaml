@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="MpvShell.App.Views.BlankPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Grid x:Name="RootGrid" Background="#080C13" />
+</Page>
