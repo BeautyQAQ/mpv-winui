@@ -19,6 +19,10 @@ internal sealed class EventPublishingBackend : IPlayerBackend
 
     public Func<CancellationToken, Task>? PlayHandler { get; set; }
     public Func<CancellationToken, Task>? PauseHandler { get; set; }
+    public Func<CancellationToken, Task>? StopHandler { get; set; }
+    public Func<double, CancellationToken, Task>? SpeedHandler { get; set; }
+    public Func<CancellationToken, Task<InfoPanelSnapshot>>? InfoHandler { get; set; }
+    public Func<CancellationToken, Task<IReadOnlyList<TrackInfo>>>? TracksHandler { get; set; }
     public Func<int, CancellationToken, Task>? VolumeHandler { get; set; }
     public Func<bool, CancellationToken, Task>? MuteHandler { get; set; }
 
@@ -67,6 +71,8 @@ internal sealed class EventPublishingBackend : IPlayerBackend
     public Task PlayAsync(CancellationToken cancellationToken) =>
         PlayHandler?.Invoke(cancellationToken) ?? Task.CompletedTask;
     public Task PauseAsync(CancellationToken cancellationToken) => PauseHandler?.Invoke(cancellationToken) ?? Task.CompletedTask;
+    public Task StopAsync(CancellationToken cancellationToken) => StopHandler?.Invoke(cancellationToken) ?? Task.CompletedTask;
+    public Task SetSpeedAsync(double speed, CancellationToken cancellationToken) => SpeedHandler?.Invoke(speed, cancellationToken) ?? Task.CompletedTask;
     public Task SeekAsync(double deltaSeconds, CancellationToken cancellationToken) =>
         SeekHandler?.Invoke(deltaSeconds, cancellationToken) ?? Task.CompletedTask;
     public Task SetPositionAsync(double absoluteSeconds, CancellationToken cancellationToken) =>
@@ -79,8 +85,8 @@ internal sealed class EventPublishingBackend : IPlayerBackend
         SubtitleTrackHandler?.Invoke(trackId, cancellationToken) ?? Task.CompletedTask;
 
     public Task<IReadOnlyList<TrackInfo>> GetTracksAsync(CancellationToken cancellationToken) =>
-        Task.FromResult<IReadOnlyList<TrackInfo>>(Array.Empty<TrackInfo>());
+        TracksHandler?.Invoke(cancellationToken) ?? Task.FromResult<IReadOnlyList<TrackInfo>>(Array.Empty<TrackInfo>());
 
     public Task<InfoPanelSnapshot> GetInfoSnapshotAsync(CancellationToken cancellationToken) =>
-        Task.FromResult(new InfoPanelSnapshot(null, null, null, null, null, null, null));
+        InfoHandler?.Invoke(cancellationToken) ?? Task.FromResult(new InfoPanelSnapshot(null, null, null, null, null, null, null));
 }

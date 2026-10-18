@@ -16,7 +16,7 @@ public sealed class PlayerViewModelGestureTests
         var backend = new RecordingBackend();
         var vm = new PlayerViewModel(backend, new PlaybackInteractionCoordinator(), new GestureDecisionEngine())
         {
-            State = PlaybackState.Initial with { PositionSeconds = 10, DurationSeconds = 120 }
+            State = PlaybackState.Initial with { IsStopped = false, IsSeekable = true, PositionSeconds = 10, DurationSeconds = 120 }
         };
 
         await vm.HandleDragAsync(deltaX: 120, deltaY: 10);
@@ -33,7 +33,7 @@ public sealed class PlayerViewModelGestureTests
         var backend = new RecordingBackend();
         var vm = new PlayerViewModel(backend, new PlaybackInteractionCoordinator(), new GestureDecisionEngine())
         {
-            State = PlaybackState.Initial with { DurationSeconds = 120 }
+            State = PlaybackState.Initial with { IsStopped = false, IsSeekable = true, DurationSeconds = 120 }
         };
 
         await vm.SeekToAsync(35);
@@ -64,6 +64,10 @@ public sealed class PlayerViewModelGestureTests
             LastSeekDelta = deltaSeconds;
             return Task.CompletedTask;
         }
+
+        public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public Task SetSpeedAsync(double speed, CancellationToken cancellationToken) => Task.CompletedTask;
 
         public Task SetPositionAsync(double absoluteSeconds, CancellationToken cancellationToken)
         {

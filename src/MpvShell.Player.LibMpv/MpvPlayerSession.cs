@@ -14,7 +14,7 @@ public sealed partial class MpvPlayerSession : IMpvPlayerSession
     private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(15);
     private static readonly string[] ObservedProperties =
     [
-        "pause", "time-pos", "duration", "volume", "mute", "idle-active", "eof-reached",
+        "pause", "time-pos", "duration", "seekable", "volume", "mute", "speed", "idle-active", "eof-reached",
         "paused-for-cache", "track-list", "video-params", "video-codec", "audio-codec-name",
         "estimated-vf-fps", "container-fps", "cache-buffering-state", "hwdec-current",
         "hwdec-interop", "decoder-frame-drop-count", "frame-drop-count",
@@ -124,15 +124,17 @@ public sealed partial class MpvPlayerSession : IMpvPlayerSession
         Trace.WriteLine($"[libmpv] 渲染资源释放失败，保留 core 至进程结束：{error.Message}");
     }
 
-    internal Task<object?> CommandAsync(string[] arguments, CancellationToken cancellationToken, Action? onSubmitted = null) =>
-        MutatePlaybackAsync(() => CommandCoreAsync(arguments, cancellationToken, onSubmitted), cancellationToken);
+    internal Task<object?> CommandAsync(string[] arguments, CancellationToken cancellationToken, Action? onSubmitted = null,
+        bool completeAfterSubmission = false) =>
+        MutatePlaybackAsync(() => CommandCoreAsync(arguments, cancellationToken, onSubmitted, completeAfterSubmission), cancellationToken);
 
-    private Task<object?> CommandCoreAsync(string[] arguments, CancellationToken cancellationToken, Action? onSubmitted = null) =>
+    private Task<object?> CommandCoreAsync(string[] arguments, CancellationToken cancellationToken, Action? onSubmitted = null,
+        bool completeAfterSubmission = false) =>
         RequestAsync((handle, id) =>
         {
             using var utf8 = new Utf8Arguments(arguments);
             return MpvNative.CommandAsync(handle, id, utf8.Pointer);
-        }, cancellationToken, onSubmitted);
+        }, cancellationToken, onSubmitted, completeAfterSubmission);
 
     internal Task<object?> GetPropertyAsync(string name, CancellationToken cancellationToken) =>
         RequestAsync((handle, id) => MpvNative.GetPropertyAsync(handle, id, name, MpvFormat.Node), cancellationToken);
@@ -188,11 +190,21 @@ public sealed partial class MpvPlayerSession : IMpvPlayerSession
         }
     }
 
-    private async Task<object?> RequestAsync(Func<nint, ulong, int> send, CancellationToken cancellationToken, Action? onSubmitted = null)
+    private async Task<object?> RequestAsync(Func<nint, ulong, int> send, CancellationToken cancellationToken, Action? onSubmitted = null,
+        bool completeAfterSubmission = false)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var id = (ulong)Interlocked.Increment(ref _nextRequestId);
         var completion = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var submissionGate = new object();
+        var submitted = false;
+        // stop 的调用者可取消等待，但原生已受理后仍须保留内部回复/卸载确认。
+        // 同一锁明确裁定取消与原生 send 的先后；恢复租约或事件线程排队期间仍可撤销。
+        using var registration = completeAfterSubmission ? cancellationToken.Register(() =>
+        {
+            lock (submissionGate)
+                if (!submitted) completion.TrySetCanceled(cancellationToken);
+        }) : default;
         lock (_lifecycle)
         {
             ObjectDisposedException.ThrowIf(_disposing, this);
@@ -202,20 +214,25 @@ public sealed partial class MpvPlayerSession : IMpvPlayerSession
             _commands.Enqueue(handle =>
             {
                 // 排队期间取消的操作无需再进入 mpv；已提交的操作仍允许自然完成。
-                if (!_pending.ContainsKey(id)) return;
-                try
+                lock (submissionGate)
                 {
-                    MpvNative.Check(send(handle, id), "播放器请求");
-                    // 仅在原生入口接受请求后通知；仍在事件线程，先于该请求引起的事件派发。
-                    // 取消等待不撤销已提交请求，因此此通知不能依赖等待者是否仍存在。
-                    onSubmitted?.Invoke();
+                    if (!_pending.ContainsKey(id) || completion.Task.IsCanceled) return;
+                    try
+                    {
+                        MpvNative.Check(send(handle, id), "播放器请求");
+                        submitted = true;
+                        // 仅在原生入口接受请求后通知；仍在事件线程，先于该请求引起的事件派发。
+                        // 取消等待不撤销已提交请求，因此此通知不能依赖等待者是否仍存在。
+                        onSubmitted?.Invoke();
+                    }
+                    catch (Exception ex) { completion.TrySetException(ex); }
                 }
-                catch (Exception ex) { completion.TrySetException(ex); }
             });
             _eventSignal.Set();
         }
 
-        try { return await completion.Task.WaitAsync(_requestTimeout, cancellationToken).ConfigureAwait(false); }
+        try { return await completion.Task.WaitAsync(_requestTimeout,
+            completeAfterSubmission ? CancellationToken.None : cancellationToken).ConfigureAwait(false); }
         catch (TimeoutException ex) { throw new TimeoutException("播放器请求超时，请检查媒体或重新加载。", ex); }
         finally { _pending.TryRemove(id, out _); }
     }

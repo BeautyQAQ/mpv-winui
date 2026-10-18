@@ -245,6 +245,19 @@ public sealed partial class D3D11VideoSurfaceRenderer : IVideoSurfaceRenderer
         finally { _lifecycle.Release(); }
     }
 
+    public async ValueTask RequestRedrawAsync(CancellationToken cancellationToken)
+    {
+        await _lifecycle.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (_disposed || _fatalFailure || _worker is null) return;
+            // libmpv 卸载视频后可能没有 FRAME 更新；由渲染线程补画当前真实内容。
+            // 不在 UI 线程清色，后续已打开新媒体时也不会覆盖它的画面。
+            await _worker.InvokeAsync(() => _forceRedraw = true, cancellationToken).ConfigureAwait(false);
+        }
+        finally { _lifecycle.Release(); }
+    }
+
     public async ValueTask DetachAsync(CancellationToken cancellationToken)
     {
         await _lifecycle.WaitAsync(cancellationToken).ConfigureAwait(false);

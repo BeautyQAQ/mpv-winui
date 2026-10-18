@@ -17,6 +17,8 @@ public sealed class PlayerViewModelTerminalTests
     [InlineData("track")]
     [InlineData("volume")]
     [InlineData("mute")]
+    [InlineData("stop")]
+    [InlineData("speed")]
     public async Task A_session_failure_should_survive_late_command_success_and_playback_events(string command)
     {
         var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -27,13 +29,14 @@ public sealed class PlayerViewModelTerminalTests
             PlayHandler = _ => Pending(), PauseHandler = _ => Pending(),
             SetPositionHandler = (_, _) => Pending(), LoadHandler = (_, _) => Pending(),
             AudioTrackHandler = (_, _) => Pending(), VolumeHandler = (_, _) => Pending(), MuteHandler = (_, _) => Pending(),
+            StopHandler = _ => Pending(), SpeedHandler = (_, _) => Pending(),
         };
         var ui = new TestDispatcher();
         await using var vm = CreateViewModel(backend, ui);
         await vm.InitializeAsync();
         vm.State = PlaybackState.Initial with
         {
-            CurrentUrl = "current.mp4", PositionSeconds = 10, DurationSeconds = 120, IsPlaying = command == "pause",
+            IsStopped = false, IsSeekable = true, CurrentUrl = "current.mp4", PositionSeconds = 10, DurationSeconds = 120, IsPlaying = command == "pause",
         };
         vm.UrlText = "next.mp4";
         var original = new TrackInfo(1, "audio", null, "原音轨", true);
@@ -47,6 +50,8 @@ public sealed class PlayerViewModelTerminalTests
             "load" => vm.OpenUrlCommand.ExecuteAsync(null),
             "track" => vm.SelectTrackCommand.ExecuteAsync(next),
             "volume" => vm.ChangeVolumeAsync(20),
+            "stop" => vm.StopCommand.ExecuteAsync(null),
+            "speed" => vm.ChangeSpeedAsync(2),
             _ => vm.ToggleMuteCommand.ExecuteAsync(null),
         };
         try
@@ -105,6 +110,7 @@ public sealed class PlayerViewModelTerminalTests
         {
             PlayHandler = _ => Call(), LoadHandler = (_, _) => Call(), SetPositionHandler = (_, _) => Call(),
             AudioTrackHandler = (_, _) => Call(), VolumeHandler = (_, _) => Call(), MuteHandler = (_, _) => Call(),
+            StopHandler = _ => Call(), SpeedHandler = (_, _) => Call(),
             PauseHandler = _ =>
             {
                 paused.TrySetResult();
@@ -114,7 +120,7 @@ public sealed class PlayerViewModelTerminalTests
         var ui = new TestDispatcher();
         await using var vm = CreateViewModel(backend, ui);
         await vm.InitializeAsync();
-        vm.State = PlaybackState.Initial with { CurrentUrl = "current.mp4", IsPlaying = true };
+        vm.State = PlaybackState.Initial with { IsStopped = false, IsSeekable = true, CurrentUrl = "current.mp4", IsPlaying = true };
         backend.FailEventObservation(new InvalidOperationException("事件流中断"));
         await ui.RunNextAsync();
         await paused.Task.WaitAsync(TimeSpan.FromSeconds(5));
@@ -126,6 +132,8 @@ public sealed class PlayerViewModelTerminalTests
         await vm.SelectTrackCommand.ExecuteAsync(new TrackInfo(2, "audio", null, "音轨", false));
         await vm.ChangeVolumeAsync(20);
         await vm.ToggleMuteCommand.ExecuteAsync(null);
+        await vm.StopCommand.ExecuteAsync(null);
+        await vm.ChangeSpeedAsync(2);
         calls.Should().Be(0);
         vm.ErrorMessage.Should().Be("事件流中断");
     }

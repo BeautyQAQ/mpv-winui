@@ -20,7 +20,7 @@ public sealed class PlayerViewModelEventTests
         };
         await using var vm = CreateViewModel(backend, new QueuedUiDispatcher());
         await vm.InitializeAsync();
-        vm.State = PlaybackState.Initial with { CurrentUrl = "current.mp4", IsPlaying = false };
+        vm.State = PlaybackState.Initial with { IsStopped = false, IsSeekable = true, CurrentUrl = "current.mp4", IsPlaying = false };
 
         var play = vm.TogglePlayPauseCommand.ExecuteAsync(null);
         try
@@ -53,7 +53,7 @@ public sealed class PlayerViewModelEventTests
         await vm.InitializeAsync();
         vm.State = PlaybackState.Initial with
         {
-            CurrentUrl = "current.mp4", PositionSeconds = 10, DurationSeconds = 120, CurrentOverlay = OverlayKind.InfoPanel,
+            IsStopped = false, IsSeekable = true, CurrentUrl = "current.mp4", PositionSeconds = 10, DurationSeconds = 120, CurrentOverlay = OverlayKind.InfoPanel,
         };
 
         var seek = relative ? vm.SeekForwardCommand.ExecuteAsync(null) : vm.SeekToAsync(80);
@@ -86,7 +86,7 @@ public sealed class PlayerViewModelEventTests
         var next = new TrackInfo(2, kind, null, "另一轨道", false);
         vm.Tracks.Add(original);
         vm.Tracks.Add(next);
-        vm.State = PlaybackState.Initial with { CurrentUrl = "current.mp4", CurrentOverlay = OverlayKind.Tracks };
+        vm.State = PlaybackState.Initial with { IsStopped = false, IsSeekable = true, CurrentUrl = "current.mp4", CurrentOverlay = OverlayKind.Tracks };
 
         var selection = vm.SelectTrackCommand.ExecuteAsync(next);
         try
@@ -115,7 +115,7 @@ public sealed class PlayerViewModelEventTests
         };
         await using var vm = CreateViewModel(backend, new QueuedUiDispatcher());
         await vm.InitializeAsync();
-        vm.State = PlaybackState.Initial with { CurrentUrl = "current.mp4" };
+        vm.State = PlaybackState.Initial with { IsStopped = false, IsSeekable = true, CurrentUrl = "current.mp4" };
         vm.UrlText = "next.mp4";
         var recentUrls = vm.RecentUrls.ToArray();
 
@@ -152,7 +152,7 @@ public sealed class PlayerViewModelEventTests
         };
         await using var vm = CreateViewModel(backend, new QueuedUiDispatcher());
         await vm.InitializeAsync();
-        vm.State = PlaybackState.Initial with { CurrentUrl = "current.mp4", PositionSeconds = 10, DurationSeconds = 120 };
+        vm.State = PlaybackState.Initial with { IsStopped = false, IsSeekable = true, CurrentUrl = "current.mp4", PositionSeconds = 10, DurationSeconds = 120 };
         vm.UrlText = "next.mp4";
         vm.ReportRenderingFailure("渲染不可恢复");
 
@@ -177,7 +177,7 @@ public sealed class PlayerViewModelEventTests
         var backend = new EventPublishingBackend();
         var dispatcher = new QueuedUiDispatcher();
         await using var vm = CreateViewModel(backend, dispatcher);
-        vm.State = PlaybackState.Initial with { CurrentUrl = "current.mp4", IsPlaying = true };
+        vm.State = PlaybackState.Initial with { IsStopped = false, IsSeekable = true, CurrentUrl = "current.mp4", IsPlaying = true };
         backend.Publish(new PlaybackStateChanged(vm.State));
         backend.Publish(new BufferingChanged(true));
         await vm.InitializeAsync();
@@ -216,7 +216,7 @@ public sealed class PlayerViewModelEventTests
         bufferingStarted();
         vm.IsBuffering.Should().BeTrue();
         vm.BufferingVisibility.Should().Be(Microsoft.UI.Xaml.Visibility.Visible);
-        changedProperties.Should().Equal(nameof(vm.IsBuffering), nameof(vm.BufferingVisibility));
+        changedProperties.Should().Contain([nameof(vm.IsBuffering), nameof(vm.BufferingVisibility), nameof(vm.StatusTitle), nameof(vm.IsStatusBusy)]);
 
         changedProperties.Clear();
         backend.Publish(new BufferingChanged(true));
@@ -227,7 +227,7 @@ public sealed class PlayerViewModelEventTests
         (await dispatcher.TakeAsync())();
         vm.IsBuffering.Should().BeFalse();
         vm.BufferingVisibility.Should().Be(Microsoft.UI.Xaml.Visibility.Collapsed);
-        changedProperties.Should().Equal(nameof(vm.IsBuffering), nameof(vm.BufferingVisibility));
+        changedProperties.Should().Contain([nameof(vm.IsBuffering), nameof(vm.BufferingVisibility), nameof(vm.StatusTitle), nameof(vm.IsStatusBusy)]);
     }
 
     [Theory]
@@ -323,7 +323,7 @@ public sealed class PlayerViewModelEventTests
         var backend = new EventPublishingBackend();
         var dispatcher = new QueuedUiDispatcher();
         await using var vm = CreateViewModel(backend, dispatcher);
-        var initial = PlaybackState.Initial with { IsPlaying = true, AreControlsVisible = false };
+        var initial = PlaybackState.Initial with { IsStopped = false, IsSeekable = true, IsPlaying = true, AreControlsVisible = false };
         vm.State = initial;
 
         var track = new TrackInfo(1, "audio", "zho", "中文音轨", true);
@@ -360,7 +360,7 @@ public sealed class PlayerViewModelEventTests
         await vm.InitializeAsync();
         backend.Publish(new PlaybackStateChanged(PlaybackState.Initial with
         {
-            CurrentUrl = "http://127.0.0.1/sample.mp4",
+            IsStopped = false, IsSeekable = true, CurrentUrl = "http://127.0.0.1/sample.mp4",
             IsPlaying = true,
             PositionSeconds = 21,
             DurationSeconds = 54,
@@ -391,7 +391,7 @@ public sealed class PlayerViewModelEventTests
         var backend = new EventPublishingBackend();
         var dispatcher = new QueuedUiDispatcher();
         await using var vm = CreateViewModel(backend, dispatcher);
-        vm.State = PlaybackState.Initial with { IsPlaying = true, AreControlsVisible = false };
+        vm.State = PlaybackState.Initial with { IsStopped = false, IsSeekable = true, IsPlaying = true, AreControlsVisible = false };
         await vm.InitializeAsync();
 
         backend.Publish(new PlaybackStateChanged(vm.State with
@@ -434,7 +434,7 @@ public sealed class PlayerViewModelEventTests
         await using var vm = CreateViewModel(backend, dispatcher);
         var initial = PlaybackState.Initial with
         {
-            IsPlaying = true,
+            IsStopped = false, IsSeekable = true, IsPlaying = true,
             PositionSeconds = 5,
             CurrentOverlay = OverlayKind.InfoPanel,
         };
@@ -477,7 +477,7 @@ public sealed class PlayerViewModelEventTests
         await using var vm = CreateViewModel(backend, dispatcher);
         var initial = PlaybackState.Initial with
         {
-            CurrentUrl = "http://127.0.0.1/sample.mp4",
+            IsStopped = false, IsSeekable = true, CurrentUrl = "http://127.0.0.1/sample.mp4",
             PositionSeconds = 20,
             DurationSeconds = 120,
         };

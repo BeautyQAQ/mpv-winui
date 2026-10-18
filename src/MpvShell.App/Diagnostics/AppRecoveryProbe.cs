@@ -53,7 +53,8 @@ internal sealed class AppRecoveryProbe
     }
 
     internal static async Task RunIfRequestedAsync(PlayerPage page, PlayerViewModel vm, D3D11VideoSurfaceRenderer renderer,
-        IMpvPlayerSession playerSession, Func<Task> shutdown, bool ready, Func<bool> playbackControlsEnabled)
+        IMpvPlayerSession playerSession, Func<Task> shutdown, bool ready, Func<bool> playbackControlsEnabled,
+        Task? startupLoad = null)
     {
         var arguments = Environment.GetCommandLineArgs();
         var reportPath = GetArgument(arguments, "--recovery-test-report=");
@@ -71,9 +72,17 @@ internal sealed class AppRecoveryProbe
             if (!Path.IsPathFullyQualified(reportPath)) throw new ArgumentException("验收报告必须使用绝对路径。");
             if (mode is not ("playing" or "paused" or "immediate-failure" or "rebuild-failure" or "resize" or "playback"
                 or "performance" or "page-rebuild-playing" or "page-rebuild-paused" or "close-during-recovery"
-                or "close-during-load" or "recovery-media-switch")) throw new ArgumentException("未知验收模式。");
+                or "close-during-load" or "close-during-startup-load" or "recovery-media-switch")) throw new ArgumentException("未知验收模式。");
             if (!ready) throw new InvalidOperationException(vm.ErrorMessage ?? "播放器初始化未完成。");
+            // 普通探针保持等待启动媒体的原语义；启动加载关闭模式必须观察 OnLoaded 已提交的同一任务。
+            if (mode != "close-during-startup-load" && startupLoad is not null) await startupLoad;
             report["Device"] = await renderer.GetDeviceInfoAsync(CancellationToken.None);
+            if (mode == "close-during-startup-load")
+            {
+                await probe.RunCloseDuringStartupLoadAsync(vm, arguments, startupLoad, report);
+                report["Status"] = "Passed";
+                return;
+            }
             if (mode == "close-during-load")
             {
                 // 媒体尚在加载即请求关闭；finally 统一执行关闭、释放核对与报告。
@@ -272,7 +281,9 @@ internal sealed class AppRecoveryProbe
             try
             {
                 var shutdownClock = Stopwatch.StartNew();
-                await shutdown().WaitAsync(TimeSpan.FromSeconds(15));
+                var shutdownLimit = TimeSpan.FromSeconds(mode == "close-during-startup-load" ? 5 : 15);
+                report["ShutdownLimitSeconds"] = shutdownLimit.TotalSeconds;
+                await shutdown().WaitAsync(shutdownLimit);
                 probe.Stage("页面关闭完成，渲染线程和 mpv 会话均已释放");
                 report["ShutdownCompleted"] = true;
                 report["ShutdownSeconds"] = Math.Round(shutdownClock.Elapsed.TotalSeconds, 3);
@@ -283,9 +294,17 @@ internal sealed class AppRecoveryProbe
                 report["ShutdownRepeatSafe"] = true;
                 if (probe._pendingLoad is not null)
                 {
-                    try { await probe._pendingLoad.WaitAsync(TimeSpan.FromSeconds(5)); }
+                    var pendingLoadLimit = mode == "close-during-startup-load"
+                        ? shutdownLimit - shutdownClock.Elapsed : TimeSpan.FromSeconds(5);
+                    try { await probe._pendingLoad.WaitAsync(pendingLoadLimit > TimeSpan.Zero ? pendingLoadLimit : TimeSpan.Zero); }
                     catch (Exception) { /* 预期以已释放异常结束；完成性单独记录。 */ }
                     report["PendingLoadEndedAfterShutdown"] = probe._pendingLoad.IsCompleted;
+                    if (mode == "close-during-startup-load")
+                    {
+                        report["StartupLoadCompletionSeconds"] = Math.Round(shutdownClock.Elapsed.TotalSeconds, 3);
+                        Require(probe._pendingLoad.IsCompleted && shutdownClock.Elapsed <= shutdownLimit,
+                            "启动媒体加载等待与资源释放必须在同一 5 秒期限内结束。");
+                    }
                 }
                 if (report["SessionReleased"] is not true || report["RendererReleased"] is not true)
                 {
@@ -302,6 +321,23 @@ internal sealed class AppRecoveryProbe
             catch (Exception ex) { Trace.WriteLine($"写入应用验收报告失败：{ex}"); }
             mainWindow.Close();
         }
+    }
+
+    private async Task RunCloseDuringStartupLoadAsync(PlayerViewModel vm, string[] arguments, Task? startupLoad,
+        Dictionary<string, object?> report)
+    {
+        var source = arguments.Skip(1).FirstOrDefault(argument => !argument.StartsWith("--", StringComparison.Ordinal));
+        Require(source is not null && Uri.TryCreate(source, UriKind.Absolute, out var uri) && uri.Scheme == "http" && uri.IsLoopback,
+            "启动加载关闭验收需要把本机 HTTP 地址作为真实启动媒体参数。");
+        Require(startupLoad is not null, "页面必须已经消费启动参数并提交启动媒体任务。");
+        _pendingLoad = startupLoad;
+        report["StartupMediaArgument"] = source;
+        await UntilAsync(() => vm.IsLoading && Equals(vm.State.CurrentUrl, source), vm,
+            "等待启动媒体加载被原生受理", timeout: TimeSpan.FromSeconds(15));
+        Require(!startupLoad!.IsCompleted, "关闭前启动媒体必须仍在加载，不能用已经结束的请求验收。");
+        report["StartupLoadPendingBeforeShutdown"] = true;
+        report["LoadAccepted"] = true;
+        Stage("真实启动参数的媒体仍在加载，页面资源初始化已经结束，准备立即关闭应用");
     }
 
     private async Task RunCloseDuringLoadAsync(PlayerViewModel vm, string[] arguments, Dictionary<string, object?> report)

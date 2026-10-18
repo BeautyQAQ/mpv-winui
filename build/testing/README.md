@@ -33,6 +33,12 @@ pwsh -File build/testing/test-app-recovery.ps1
 
 应用检查真实帧像素、渲染资源重建和播放状态连续性，并验证后续不可恢复错误和重建失败能到达 `PlayerViewModel`。终态还要求原生媒体暂停、播放入口禁用；音量命令不能清除错误，播放命令和显示器状态变化不能重启媒体/呈现。每个场景使用独立应用进程，结束时释放播放会话、渲染资源及恢复同步锁，关闭窗口并写出 JSON 报告。单个进程限时 90 秒；超时只终止脚本启动的该测试进程。报告必须同时包含 `Status="Passed"` 和布尔值 `ShutdownCompleted=true`；报告缺失或进程非零退出也会使脚本失败。自 P1-03 起，报告还必须确认 `SessionReleased`、`RendererReleased` 与 `ShutdownRepeatSafe`；每个场景的会话日志通过 `MPVSHELL_LOG_DIRECTORY` 重定向到报告目录，脚本核对其中包含“会话已销毁”与“渲染上下文、EGL、SwapChain 和 D3D11 资源已按顺序释放”标记。页面重建场景通过真实 Frame 导航卸载并重新挂载 `PlayerPage`（新页面实例），验证共享播放会话上的媒体、轨道、暂停位置与像素在重建后保持一致；`close-during-recovery` 在自动重建持有生命周期锁与视频租约期间请求关闭；`recovery-media-switch` 在恢复租约持有期间提交换媒体，验证恢复不把旧媒体状态或错误带给新文件。
 
+`close-during-startup-load` 将同类本机挂起 HTTP 地址作为真正的启动媒体参数，观察页面提交的启动加载任务仍未完成时关闭，要求资源释放和加载等待结束共用 5 秒预算。它区别于初始化后另行打开媒体的 `close-during-load`，用于防止页面释放等待启动媒体加载超时。可单独执行：
+
+```powershell
+pwsh -File build/testing/test-app-recovery.ps1 -NoBuild -Mode close-during-startup-load
+```
+
 脚本仅对自行生成的素材传入 `--recovery-test-animated-pattern`，要求播放恢复后相隔至少 0.5 秒的两次像素采样出现变化，以发现时间前进但画面冻结的问题。暂停场景选取第 30 秒或片中点（取较早者），等待原生 seek 结束且位置稳定，再比较恢复前后的实际暂停位置及像素：位置差小于 1ms，归一化 RGB 平均绝对差小于 2/255，相对差小于 2%。自定义视频应在该处有可见内容；不启用运动图案断言。读回请求仅在成功 Present 后完成。
 
 这些场景通过生成故障异常执行真实应用的恢复和错误处理流程，不会触发操作系统 GPU 超时检测与恢复（TDR）或实际显卡驱动重置。

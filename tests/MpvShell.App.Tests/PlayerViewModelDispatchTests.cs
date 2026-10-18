@@ -18,7 +18,7 @@ public sealed class PlayerViewModelDispatchTests
         vm.SetUiDispatcher(callback => callbacks.Writer.TryWrite(callback));
         var oldTrack = new TrackInfo(1, "audio", null, "旧音轨", true);
         var latestTrack = new TrackInfo(2, "audio", null, "新音轨", true);
-        var initial = PlaybackState.Initial with { CurrentUrl = "current.mp4", IsPlaying = true };
+        var initial = PlaybackState.Initial with { IsStopped = false, IsSeekable = true, CurrentUrl = "current.mp4", IsPlaying = true };
 
         // 初始化前填好事件流，使就绪批次独立于生产者与事件泵的线程调度。
         backend.Publish(new PlaybackStateChanged(initial with { PositionSeconds = 1 }));

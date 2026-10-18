@@ -16,7 +16,7 @@ public sealed class PlayerViewModelPlaybackCommandTests
         var backend = new RecordingBackend();
         var vm = new PlayerViewModel(backend, new PlaybackInteractionCoordinator())
         {
-            State = PlaybackState.Initial with { CurrentUrl = "http://127.0.0.1/sample.mp4" },
+            State = PlaybackState.Initial with { IsStopped = false, IsSeekable = true, CurrentUrl = "http://127.0.0.1/sample.mp4" },
         };
 
         await vm.TogglePlayPauseCommand.ExecuteAsync(null);
@@ -47,7 +47,7 @@ public sealed class PlayerViewModelPlaybackCommandTests
         var backend = new RecordingBackend();
         var vm = new PlayerViewModel(backend, new PlaybackInteractionCoordinator())
         {
-            State = PlaybackState.Initial with { PositionSeconds = 12, DurationSeconds = 100 }
+            State = PlaybackState.Initial with { IsStopped = false, IsSeekable = true, PositionSeconds = 12, DurationSeconds = 100 }
         };
 
         await vm.SeekForwardCommand.ExecuteAsync(null);
@@ -88,6 +88,10 @@ public sealed class PlayerViewModelPlaybackCommandTests
             LastSeekDelta = deltaSeconds;
             return Task.CompletedTask;
         }
+
+        public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public Task SetSpeedAsync(double speed, CancellationToken cancellationToken) => Task.CompletedTask;
 
         public Task SetPositionAsync(double absoluteSeconds, CancellationToken cancellationToken) => Task.CompletedTask;
 

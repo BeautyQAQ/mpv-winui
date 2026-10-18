@@ -21,7 +21,7 @@ public sealed class PlayerViewModelTrackSelectionTests
         int? expectedSubtitleTrackId)
     {
         var backend = new RecordingBackend();
-        var vm = new PlayerViewModel(backend, new PlaybackInteractionCoordinator());
+        var vm = new PlayerViewModel(backend, new PlaybackInteractionCoordinator()) { State = PlaybackState.Initial with { IsStopped = false, IsSeekable = true } };
         var targetTrack = new TrackInfo(trackId, kind, "en", "Track", false);
 
         vm.Tracks.Add(targetTrack);
@@ -30,14 +30,15 @@ public sealed class PlayerViewModelTrackSelectionTests
 
         backend.LastAudioTrackId.Should().Be(expectedAudioTrackId);
         backend.LastSubtitleTrackId.Should().Be(expectedSubtitleTrackId);
-        vm.Tracks.Should().ContainSingle(track => track.Id == trackId && track.Selected);
+        vm.Tracks.Should().ContainSingle(track => track.Id == trackId && !track.Selected,
+            "轨道选中状态必须等待后端事实事件，命令回复不能乐观选中");
     }
 
     [Fact]
-    public async Task Closing_subtitles_should_keep_an_audio_track_with_the_same_id_selected()
+    public async Task Closing_subtitles_request_should_keep_existing_selection_until_the_backend_confirms()
     {
         var backend = new RecordingBackend();
-        var vm = new PlayerViewModel(backend, new PlaybackInteractionCoordinator());
+        var vm = new PlayerViewModel(backend, new PlaybackInteractionCoordinator()) { State = PlaybackState.Initial with { IsStopped = false, IsSeekable = true } };
         vm.Tracks.Add(new TrackInfo(1, "audio", "eng", "音轨", true));
         vm.Tracks.Add(new TrackInfo(1, "sub", "eng", "SRT", true));
         vm.Tracks.Add(new TrackInfo(2, "sub", "zho", "ASS", false));
@@ -49,7 +50,7 @@ public sealed class PlayerViewModelTrackSelectionTests
         backend.LastSubtitleTrackId.Should().Be(0);
         backend.LastAudioTrackId.Should().BeNull();
         vm.Tracks.Where(track => track.Kind == "audio").Should().ContainSingle().Which.Selected.Should().BeTrue();
-        vm.Tracks.Where(track => track.Kind == "sub" && track.Selected).Should().ContainSingle().Which.Id.Should().Be(0);
+        vm.Tracks.Where(track => track.Kind == "sub" && track.Selected).Should().ContainSingle().Which.Id.Should().Be(1);
     }
 
     private sealed class RecordingBackend : IPlayerBackend
@@ -69,6 +70,10 @@ public sealed class PlayerViewModelTrackSelectionTests
         public Task PauseAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 
         public Task SeekAsync(double deltaSeconds, CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public Task SetSpeedAsync(double speed, CancellationToken cancellationToken) => Task.CompletedTask;
 
         public Task SetPositionAsync(double absoluteSeconds, CancellationToken cancellationToken) => Task.CompletedTask;
 

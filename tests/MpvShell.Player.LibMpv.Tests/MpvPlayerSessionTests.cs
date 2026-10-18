@@ -90,6 +90,8 @@ public sealed class MpvPlayerSessionTests
             await backend.LoadUrlAsync(file, cancel.Token);
             await WaitUntilAsync(() => events.OfType<PlaybackStateChanged>().Any(item => item.State.IsPlaying && item.State.PositionSeconds > 0.1), cancel.Token);
             events.OfType<PlaybackStateChanged>().Should().Contain(item => Math.Abs(item.State.DurationSeconds - 8) < 0.01);
+            await WaitUntilAsync(() => events.OfType<PlaybackStateChanged>().Any(item => item.State.IsSeekable), cancel.Token);
+            (await session.GetPropertyAsync("seekable", cancel.Token)).Should().Be(true);
             await WaitUntilAsync(() => events.OfType<TracksChanged>().Any(item => item.Tracks.Any(track => track.Kind == "audio")), cancel.Token);
             (await backend.GetTracksAsync(cancel.Token)).Should().ContainSingle(track => track.Kind == "audio");
 
@@ -104,6 +106,7 @@ public sealed class MpvPlayerSessionTests
             await backend.PlayAsync(cancel.Token);
             await backend.SetPositionAsync(7.5, cancel.Token);
             await WaitUntilAsync(() => events.OfType<EndReached>().Any(), cancel.Token);
+            await WaitUntilAsync(() => events.OfType<PlaybackStateChanged>().Last().State.IsSeekable == false, cancel.Token);
             events.Clear();
             await backend.PlayAsync(cancel.Token);
             await WaitUntilAsync(() => events.OfType<PlaybackStateChanged>().Any(item => item.State.IsPlaying && item.State.PositionSeconds > 0.1), cancel.Token);

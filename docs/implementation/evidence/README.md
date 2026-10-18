@@ -2,9 +2,14 @@
 
 本目录保存可提交的验证记录；原始测试日志、TRX、报告和媒体保存在记录指定的 `artifacts/` 路径，不随 Git 提交。记录必须区分本次执行、继承的历史证据和未验证项，保留失败历史。
 
-- 当前计划：[Phase 1 工作包与验收标准](../phase-1-plan.md)
-- 当前状态：[Phase 1 进度](../phase-1-progress.md)
+- 当前计划：[Phase 2 工作包与验收标准](../phase-2-plan.md)
+- 当前状态：[Phase 2 进度](../phase-2-progress.md)
 - 当前包：[发布入口](../release-status.md)
+- [P2-05 Phase 2 阶段验收（2026-10-18；声明范围内通过）](P2-05-01-phase-2-acceptance.md)
+- [P2-04 播放器界面完善（2026-10-18；本机功能验收通过）](P2-04-01-player-interface.md)
+- [P2-03 时间轴预览与手势反馈（2026-10-18；声明范围内通过）](P2-03-01-timeline-and-gesture-feedback.md)
+- [P2-02 最近打开持久化验收（2026-10-18；声明范围内通过）](P2-02-01-recent-history.md)
+- [P2-01 停止与倍速验收（2026-10-18；声明范围内通过）](P2-01-01-stop-and-speed.md)
 - [P1-05 发布与 Phase 1 范围内验收（2026-10-18）](P1-05-01-release-and-phase-1-acceptance.md)
 - [P1-04 视频 HLS、字幕与媒体信息验收（2026-10-18）](P1-04-01-video-hls-subtitles-and-media-information.md)
 - [P1-03 资源所有权、释放顺序与页面生命周期交接（2026-10-16）](P1-03-01-lifecycle-ownership-and-release-order.md)

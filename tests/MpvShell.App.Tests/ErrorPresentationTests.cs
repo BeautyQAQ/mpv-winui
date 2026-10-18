@@ -73,6 +73,10 @@ public sealed class ErrorPresentationTests
 
         public Task SeekAsync(double deltaSeconds, CancellationToken cancellationToken) => Task.CompletedTask;
 
+        public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public Task SetSpeedAsync(double speed, CancellationToken cancellationToken) => Task.CompletedTask;
+
         public Task SetPositionAsync(double absoluteSeconds, CancellationToken cancellationToken) => Task.CompletedTask;
 
         public Task SetVolumeAsync(int volume, CancellationToken cancellationToken) => Task.CompletedTask;
@@ -110,6 +114,10 @@ public sealed class ErrorPresentationTests
         public Task PauseAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 
         public Task SeekAsync(double deltaSeconds, CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public Task SetSpeedAsync(double speed, CancellationToken cancellationToken) => Task.CompletedTask;
 
         public Task SetPositionAsync(double absoluteSeconds, CancellationToken cancellationToken) => Task.CompletedTask;
 

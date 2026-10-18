@@ -172,6 +172,47 @@ public sealed class NativeRenderIntegrationTests
         }
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Stopping_video_should_clear_the_frame_and_replay_using_the_same_render_context(bool paused)
+    {
+        var path = Path.Combine(Path.GetTempPath(), "mpvshell-stop-" + Guid.NewGuid().ToString("N") + ".y4m");
+        WriteColorVideo(path);
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        await using var session = new MpvPlayerSession();
+        await using var backend = new LibMpvBackend(session);
+        try
+        {
+            await backend.InitializeAsync(cancellation.Token);
+            await using var graphics = new NativeGraphicsProbe(session);
+            await graphics.InitializeAsync();
+            var firstFrame = graphics.ReadNextFrameAsync(cancellation.Token);
+            await backend.LoadUrlAsync(path, cancellation.Token);
+            VerifyColors(await firstFrame);
+            if (paused) await backend.PauseAsync(cancellation.Token);
+
+            // 停止必须清除实际 GPU 画面，不能只把 ViewModel 改成停止状态。
+            await backend.StopAsync(cancellation.Token);
+            // 与页面收到卸载确认后 RequestRedrawAsync 相同，显式请求一次重绘。
+            // 原生卸载不保证再发一个 FRAME 标记，不能仅等待自然帧回调。
+            var pixels = await graphics.ReadBlackFrameAsync(cancellation.Token);
+            new[] { pixels.Top.Red, pixels.Top.Green, pixels.Top.Blue,
+                pixels.Bottom.Red, pixels.Bottom.Green, pixels.Bottom.Blue }
+                .Should().OnlyContain(value => value <= 5, "停止后应输出空闲黑帧");
+
+            var replayFrame = graphics.ReadNextFrameAsync(cancellation.Token);
+            await backend.PlayAsync(cancellation.Token);
+            VerifyColors(await replayFrame);
+            await backend.StopAsync(cancellation.Token);
+        }
+        finally
+        {
+            await backend.DisposeAsync();
+            File.Delete(path);
+        }
+    }
+
     private static void VerifyColors(FramePixels pixels)
     {
         pixels.Top.Red.Should().BeGreaterThan(180, "源视频上半部为红色，不能上下倒置或变黑");
@@ -214,6 +255,7 @@ public sealed class NativeRenderIntegrationTests
         private AngleContext? _angle;
         private MpvRenderContext? _render;
         private TaskCompletionSource<FramePixels>? _sample;
+        private bool _expectBlack;
         private bool _forceFrame;
         private bool _failed;
         private Exception? _failure;
@@ -245,6 +287,9 @@ public sealed class NativeRenderIntegrationTests
         public Task<FramePixels> ReadNextFrameAsync(CancellationToken cancellationToken) =>
             RequestFrameAsync(null, cancellationToken);
 
+        public Task<FramePixels> ReadBlackFrameAsync(CancellationToken cancellationToken) =>
+            RequestFrameAsync(null, cancellationToken, expectBlack: true);
+
         public Task<FramePixels> ResizeAndReadAsync(uint size, CancellationToken cancellationToken) =>
             RequestFrameAsync(size, cancellationToken);
 
@@ -261,7 +306,7 @@ public sealed class NativeRenderIntegrationTests
             return await RequestFrameAsync(null, cancellationToken);
         }
 
-        private async Task<FramePixels> RequestFrameAsync(uint? size, CancellationToken cancellationToken)
+        private async Task<FramePixels> RequestFrameAsync(uint? size, CancellationToken cancellationToken, bool expectBlack = false)
         {
             var completion = new TaskCompletionSource<FramePixels>(TaskCreationOptions.RunContinuationsAsynchronously);
             await _worker.InvokeAsync(() =>
@@ -275,6 +320,7 @@ public sealed class NativeRenderIntegrationTests
                     _size = nextSize;
                 }
                 _sample = completion;
+                _expectBlack = expectBlack;
                 _forceFrame = true;
             }, cancellationToken);
             return await completion.Task.WaitAsync(cancellationToken);
@@ -293,8 +339,12 @@ public sealed class NativeRenderIntegrationTests
             if (_sample is not null)
             {
                 var pixels = ReadPixels();
-                // 初始空闲帧可能为黑色；只有实际媒体解码产生颜色后才记录验收帧。
-                if (pixels.Top.Red + pixels.Top.Blue > 100 || pixels.Bottom.Red + pixels.Bottom.Blue > 100)
+                // 常规场景等待实际媒体颜色；停止场景等待空闲黑帧。
+                var matches = _expectBlack
+                    ? new[] { pixels.Top.Red, pixels.Top.Green, pixels.Top.Blue,
+                        pixels.Bottom.Red, pixels.Bottom.Green, pixels.Bottom.Blue }.All(value => value <= 5)
+                    : pixels.Top.Red + pixels.Top.Blue > 100 || pixels.Bottom.Red + pixels.Bottom.Blue > 100;
+                if (matches)
                 {
                     _sample.TrySetResult(pixels);
                     _sample = null;

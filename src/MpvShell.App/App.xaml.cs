@@ -37,7 +37,9 @@ public partial class App : Application
         services.AddSingleton<IPlayerBackend, LibMpvBackend>();
         services.AddSingleton<PlaybackInteractionCoordinator>();
         services.AddSingleton<GestureDecisionEngine>();
-        services.AddSingleton<RecentUrlStore>();
+        services.AddSingleton<RecentUrlStore>(_ => new RecentUrlStore(new JsonRecentUrlStorage(
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "MpvShell", "recent-history.json"))));
         services.AddSingleton<InfoPanelViewModel>();
         services.AddSingleton<PlayerViewModel>();
         services.AddTransient<MainWindow>();

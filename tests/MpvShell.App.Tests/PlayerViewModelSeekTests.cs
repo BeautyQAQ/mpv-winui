@@ -390,7 +390,7 @@ public sealed class PlayerViewModelSeekTests
         {
             State = PlaybackState.Initial with
             {
-                CurrentUrl = "current.mp4", PositionSeconds = 20, DurationSeconds = 120, IsPlaying = true,
+                IsStopped = false, IsSeekable = true, CurrentUrl = "current.mp4", PositionSeconds = 20, DurationSeconds = 120, IsPlaying = true,
             },
         };
         if (callbacks is not null) vm.SetUiDispatcher(callback => callbacks.Writer.TryWrite(callback));

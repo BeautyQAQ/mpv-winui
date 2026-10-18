@@ -2,6 +2,7 @@ using System.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Windowing;
+using MpvShell.App.Services;
 using MpvShell.App.ViewModels;
 using MpvShell.App.Views;
 using Windows.Graphics;
@@ -21,6 +22,8 @@ public sealed partial class MainWindow : Window
         var dpi = GetDpiForWindow(WinRT.Interop.WindowNative.GetWindowHandle(this));
         var scale = dpi > 0 ? dpi / 96.0 : 1.0;
         AppWindow.Resize(new SizeInt32((int)Math.Round(1120 * scale), (int)Math.Round(760 * scale)));
+        ApplyMinimumWindowSize();
+        AppWindow.Changed += OnAppWindowChanged;
         AppWindow.Closing += OnClosing;
         // 页面通过 Frame 导航承载：卸载/重新挂载遵循 WinUI 页面生命周期，
         // 页面释放渲染资源但不销毁共享播放会话（见 PlayerPage.ReleaseAsync）。
@@ -29,6 +32,19 @@ public sealed partial class MainWindow : Window
 
     [System.Runtime.InteropServices.DllImport("user32.dll")]
     private static extern uint GetDpiForWindow(nint hwnd);
+
+    private void OnAppWindowChanged(AppWindow sender, AppWindowChangedEventArgs args)
+    {
+        if (args.DidPresenterChange) ApplyMinimumWindowSize();
+    }
+
+    private void ApplyMinimumWindowSize()
+    {
+        // 全屏 presenter 不约束尺寸；恢复窗口时重新应用，避免切换后能缩到控件不可用。
+        if (AppWindow.Presenter is not OverlappedPresenter presenter) return;
+        presenter.PreferredMinimumWidth = PlayerChromePolicy.MinimumWindowWidth;
+        presenter.PreferredMinimumHeight = PlayerChromePolicy.MinimumWindowHeight;
+    }
 
     /// <summary>
     /// 完整的播放器关闭：先释放当前页面（挂起视频、释放渲染资源），再销毁共享播放会话。

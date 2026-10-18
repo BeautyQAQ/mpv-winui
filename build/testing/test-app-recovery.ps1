@@ -5,9 +5,9 @@ param(
     [string] $ReportDirectory,
     [ValidateNotNullOrEmpty()]
     [ValidateSet('playing', 'paused', 'immediate-failure', 'rebuild-failure', 'resize', 'playback', 'performance',
-        'page-rebuild-playing', 'page-rebuild-paused', 'close-during-recovery', 'close-during-load', 'recovery-media-switch')]
+        'page-rebuild-playing', 'page-rebuild-paused', 'close-during-recovery', 'close-during-load', 'close-during-startup-load', 'recovery-media-switch')]
     [string[]] $Mode = @('playing', 'paused', 'immediate-failure', 'rebuild-failure', 'resize',
-        'page-rebuild-playing', 'page-rebuild-paused', 'close-during-recovery', 'close-during-load', 'recovery-media-switch'),
+        'page-rebuild-playing', 'page-rebuild-paused', 'close-during-recovery', 'close-during-load', 'close-during-startup-load', 'recovery-media-switch'),
     [string] $AppPath,
     [switch] $NoBuild,
     # 以下仅影响 performance 模式：预热秒数、稳态窗口秒数。
@@ -137,23 +137,28 @@ try {
         try {
             # Start-Process joins ArgumentList on Windows, so quote entire path-bearing arguments.
             $arguments = [Collections.Generic.List[string]]::new()
-            if ($scenario -ne 'close-during-load') { $arguments.Add(('"{0}"' -f $MediaPath)) }
+            $loadingClose = $scenario -in @('close-during-load', 'close-during-startup-load')
+            if (-not $loadingClose) { $arguments.Add(('"{0}"' -f $MediaPath)) }
             $arguments.Add(('"--recovery-test-report={0}"' -f $reportPath))
             $arguments.Add(('--recovery-test-mode={0}' -f $scenario))
-            if ($generatedMedia -and $scenario -ne 'close-during-load') { $arguments.Add('--recovery-test-animated-pattern') }
+            if ($generatedMedia -and -not $loadingClose) { $arguments.Add('--recovery-test-animated-pattern') }
             if ($scenario -eq 'recovery-media-switch') { $arguments.Add(('"--recovery-test-switch-media={0}"' -f $switchMediaPath)) }
-            if ($scenario -eq 'close-during-load') {
+            if ($loadingClose) {
                 # 只接受连接、不响应请求的本机监听端口：加载真实停留在进行中，直到应用关闭。
                 $loadListener = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, 0)
                 $loadListener.Start()
                 $loadUrl = 'http://127.0.0.1:{0}/sample.mp4' -f ([Net.IPEndPoint]$loadListener.LocalEndpoint).Port
-                $arguments.Add(('--recovery-test-load-url={0}' -f $loadUrl))
+                if ($scenario -eq 'close-during-startup-load') {
+                    # 真正走 PlayerPage.OnLoaded 的位置启动参数，探针不得另发一次加载代替它。
+                    $arguments.Add(('"{0}"' -f $loadUrl))
+                }
+                else { $arguments.Add(('--recovery-test-load-url={0}' -f $loadUrl)) }
             }
             if ($scenario -eq 'performance') {
                 $arguments.Add(('--recovery-test-warmup-seconds={0}' -f $WarmupSeconds.ToString([Globalization.CultureInfo]::InvariantCulture)))
                 $arguments.Add(('--recovery-test-seconds={0}' -f $SteadySeconds.ToString([Globalization.CultureInfo]::InvariantCulture)))
             }
-            $scenarioMedia = if ($scenario -eq 'close-during-load') { $loadUrl } elseif ($scenario -eq 'recovery-media-switch') { "$MediaPath → $switchMediaPath" } else { $MediaPath }
+            $scenarioMedia = if ($loadingClose) { $loadUrl } elseif ($scenario -eq 'recovery-media-switch') { "$MediaPath → $switchMediaPath" } else { $MediaPath }
             Write-Host "运行应用恢复验证：$scenario；视频：$scenarioMedia；调试层：$D3D11DebugLayer；限时 $limitSeconds 秒"
             # This is the actual interactive test app, not a background helper: it needs
             # a visible SwapChainPanel and an interactive Windows desktop for rendering.
@@ -173,7 +178,9 @@ try {
             $reportStatus = $report['Status']
             $shutdownCompleted = $report['ShutdownCompleted']
             if ($reportStatus -ne 'Passed') {
-                $detail = if ($report.ContainsKey('Error')) { $report['Error'] } else { '缺少 Passed 状态。' }
+                $detail = if ($report.ContainsKey('Error')) { $report['Error'] }
+                    elseif ($report.ContainsKey('ShutdownError')) { $report['ShutdownError'] }
+                    else { '缺少 Passed 状态。' }
                 throw "应用报告恢复验证失败：$detail"
             }
             if ($shutdownCompleted -isnot [bool] -or -not $shutdownCompleted) {
@@ -185,6 +192,15 @@ try {
             }
             if ($report['ShutdownRepeatSafe'] -isnot [bool] -or -not $report['ShutdownRepeatSafe']) {
                 throw '应用未确认重复关闭幂等（ShutdownRepeatSafe）。'
+            }
+            if ($scenario -eq 'close-during-startup-load') {
+                if ($report['StartupMediaArgument'] -ne $loadUrl -or
+                    $report['StartupLoadPendingBeforeShutdown'] -isnot [bool] -or -not $report['StartupLoadPendingBeforeShutdown'] -or
+                    $report['PendingLoadEndedAfterShutdown'] -isnot [bool] -or -not $report['PendingLoadEndedAfterShutdown'] -or
+                    -not $report.ContainsKey('StartupLoadCompletionSeconds') -or
+                    $report['ShutdownSeconds'] -gt 5 -or $report['StartupLoadCompletionSeconds'] -gt 5) {
+                    throw '启动加载关闭未确认真实启动参数、关闭前仍在等待、5 秒内释放及加载等待结束。'
+                }
             }
             # 会话日志必须留下完整释放顺序标记。
             $logFile = Get-ChildItem -LiteralPath $scenarioLogDirectory -Filter 'session-*.log' |

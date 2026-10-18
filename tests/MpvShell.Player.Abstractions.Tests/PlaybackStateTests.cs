@@ -11,6 +11,9 @@ public sealed class PlaybackStateTests
         var state = PlaybackState.Initial;
 
         state.IsPlaying.Should().BeFalse();
+        state.IsStopped.Should().BeTrue();
+        state.IsSeekable.Should().BeFalse();
+        state.Speed.Should().Be(1);
         state.PositionSeconds.Should().Be(0);
         state.DurationSeconds.Should().Be(0);
         state.Volume.Should().Be(100);
