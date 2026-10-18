@@ -4,7 +4,7 @@
 > 版本：1.1
 > 更新日期：2026-08-27
 
-> 实施状态（2026-09-12 回填）：Phase 0 已在声明范围内通过；当前执行 [Phase 1 计划](implementation/phase-1-plan.md)，状态与未覆盖范围见 [Phase 1 进度](implementation/phase-1-progress.md)。第 14～15 节保留原阶段范围与验收要求，实际范围裁定见 [P0-11 验收](implementation/evidence/P0-11-01-phase-0-acceptance.md)。
+> 实施状态（2026-10-18 回填）：Phase 0 与 Phase 1 已在声明范围内通过，见 [Phase 1 验收](implementation/evidence/P1-05-01-release-and-phase-1-acceptance.md)；性能独立跟进与未覆盖范围见 [Phase 1 进度](implementation/phase-1-progress.md)。第 14～15 节保留原阶段范围与验收要求，Phase 0 实际范围裁定见 [P0-11 验收](implementation/evidence/P0-11-01-phase-0-acceptance.md)。
 
 ## 1. 决策摘要
 

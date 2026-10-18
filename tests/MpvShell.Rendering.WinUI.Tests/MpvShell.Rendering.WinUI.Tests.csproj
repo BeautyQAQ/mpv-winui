@@ -16,6 +16,7 @@
 
   <ItemGroup>
     <Using Include="Xunit" />
+    <Compile Include="..\MpvShell.Player.LibMpv.Tests\HlsMediaServer.cs" Link="Fixtures\HlsMediaServer.cs" />
   </ItemGroup>
 
   <ItemGroup>

@@ -64,3 +64,44 @@ pwsh -File build/testing/test-app-recovery.ps1 -NoBuild -Mode performance -Media
 `-D3D11DebugLayer Off` 通过 `MPVSHELL_D3D11_DEBUG_LAYER=0` 让 Debug 应用不创建 D3D11 调试层，用于在同一构建下对照调试层开销；报告中的 `Device.D3D11DebugLayerEnabled` 记录实际状态。`playback` 模式（有间隔采样）现在也输出同样的渲染统计与 mpv 计数，二者对照可量化采样开销。`performance` 模式的进程限时按预热与窗口自动放宽，也可用 `-TimeoutSeconds` 指定。
 
 固定 4K60 性能素材由 `prepare-perf-media.ps1` 生成到 `artifacts/hdr-4k/media/`，清单为 `perf-media-manifest.json`；离屏（不经窗口）的同类测量见 `tests/MpvShell.Rendering.WinUI.Tests/PlaybackPerformanceTests.cs`，通过 `MPVSHELL_TEST_PERF_*` 环境变量配置。
+
+## P1-04 视频 HLS、多音轨与字幕像素验收
+
+使用本机已有的 FFmpeg/FFprobe 生成固定输入（PowerShell 7）。默认工具路径与 `prepare-ts-seek-media.ps1` 相同，也可显式传入 `-FfmpegPath`；脚本不会下载工具。输出只能在仓库 `artifacts/` 下，已有清单默认逐文件核验哈希并复用，显式 `-Regenerate` 才覆盖生成。
+
+```powershell
+pwsh -File build/testing/prepare-p1-04-media.ps1
+$env:MPVSHELL_TEST_P1_04_MEDIA_DIR = (Resolve-Path artifacts/p1-04/media).Path
+$env:MPVSHELL_TEST_P1_04_REPORT_DIR = Join-Path (Get-Location) 'artifacts/p1-04/reports'
+dotnet test mpv-winui.slnx -p:Platform=x64 --filter 'FullyQualifiedName~VideoHlsSubtitleIntegrationTests|FullyQualifiedName~BackendMediaInformationTests|FullyQualifiedName~PlayerViewModelTrackSelectionTests' --logger trx --results-directory artifacts/p1-04/tests
+```
+
+素材为 320×180 / 24 fps / 12 秒 H.264/AAC VOD（六个两秒 MPEG-TS 分片）、含 AAC/PCM 两音轨及 SRT/ASS 两字幕的 Matroska，以及纯音频 WAV / 无音轨短视频。`media-manifest.json` 保存完整参数、工具哈希、素材哈希与 FFprobe 流信息。字幕是项目自写内容，测试用 Arial 字体来自 Windows，本项目不再分发字体。
+
+四项 `VideoHlsSubtitleIntegrationTests` 使用只绑定 `127.0.0.1` 随机端口的服务，经真实 libmpv Render API、ANGLE/D3D11 Composition SwapChain 检查：变化画面、暂停像素、跨分片定位、EOF 信息、404 后重新加载、受控分片停顿引发的缓冲/恢复、音轨编码与字幕切换/关闭像素、换媒体信息清理及实际调试日志脱敏。测试只在请求验收像素时读回 CPU；生产渲染路径不增加读回。它们无需 WinUI 窗口，不能替代 GUI 人工验收或自然播放性能测量。
+
+未设置 `MPVSHELL_TEST_P1_04_MEDIA_DIR` 时，这四项测试明确跳过；设置路径但素材缺失或哈希不符会失败。`BackendMediaInformationTests` 和 ViewModel 轨道测试不依赖素材，照常执行。JSON 报告默认写在素材目录的同级 `reports/`，每次运行使用独立文件名；是否通过以完整 TRX 结果为准，不能只数 JSON。当前执行结果与覆盖限制见 [P1-04 验收记录](../../docs/implementation/evidence/P1-04-01-video-hls-subtitles-and-media-information.md)。
+
+## Phase 1 发布与封包
+
+先完成 x64 Debug/Release 构建与回归，再用两个已经生成并校验过的素材目录创建独立候选包（PowerShell 7）：
+
+```powershell
+pwsh -File build/testing/prepare-hdr-4k-media.ps1 -OutputDirectory artifacts/p1-05/media
+pwsh -File build/testing/prepare-p1-04-media.ps1 -OutputDirectory artifacts/p1-04/media-final
+pwsh -File build/testing/publish-phase1.ps1 -HdrMediaDirectory artifacts/p1-05/media -P104MediaDirectory artifacts/p1-04/media-final
+```
+
+`publish-phase1.ps1` 在 `artifacts/phase-1/` 创建带时间和唯一 ID 的目录及相邻 `-source.zip`。源码快照覆盖 Git 跟踪文件与未忽略的新文件，包括本地未提交修改、四个原生 DLL、原生构建锁、补丁、包装器和许可证；`gitCommit` 是基线，实际源码由 `source-hashes.json` 和快照哈希确定。构建前后核对源码哈希，构建期间不要修改输入文件。快照不包含 `.git`、开发产物或素材工具，重建应用先解压快照，按根目录 README 构建；重建原生依赖使用快照内 `build/native/README.md` 的锁定源和工具。`SourceBuild/` 是随二进制提供的构建说明副本，脚本应在完整源码树内运行。
+
+底层 `publish-mvp.ps1` 仍负责 Release 自包含发布、四 DLL 的 x64/哈希/加载、Client API 和三次会话创建销毁。新包还包含 PDB、三份 4K 样片、P1-04 小样本，以及兼容 Windows PowerShell 5.1 的日志脚本。
+
+`copy-managed-licenses.ps1` 从本次还原的 NuGet 包和自包含运行时包收集许可原文、第三方通知及 nuspec，保存 SHA-256 和包 SHA-512。仅有 MIT 表达式的 SharpGen/Vortice 包使用 `licenses/origins.json` 锁定的上游提交原文，提交号必须与 nuspec 一致；发布时不联网获取许可证。`ThirdParty/nuget-license-origins.json` 覆盖应用还原依赖（含构建工具）与 .NET 运行时，不能用其条目数推断实际发布 DLL 数量。
+
+从新目录运行 `Start-Debug.ps1 -MediaPath <包内样片绝对路径>`，实际检查窗口、画面、EOF 和正常关闭；再运行 `Collect-Logs.ps1`。保留运行证据，将包内 `logs/` 移至独立验收目录，然后封包：
+
+```powershell
+pwsh -File build/testing/seal-phase1-package.ps1 -PackageDirectory artifacts/phase-1/MpvShell-phase1-实际包名
+```
+
+封包会验证源码 ZIP 的每个文件、原生构建文件与许可证副本、35 项许可证来源哈希、素材及原生闭包；生成 `package-content-sha256.json`，逐条校验成品 ZIP 内容，并写出外部 SHA-256 与核验报告。不覆盖已有 ZIP，不把本机日志带入交付包。该脚本只证明内容一致性，不替代实际 GUI 验收，也不宣称二进制逐字节可重现；全部通过后才更新 [发布入口](../../docs/implementation/release-status.md)。

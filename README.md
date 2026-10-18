@@ -2,13 +2,13 @@
 
 Windows x64 的 WinUI 3 播放器，使用进程内 libmpv 和 ANGLE/D3D11，把视频直接渲染到 `SwapChainPanel`。
 
-**当前阶段：Phase 0 已在声明范围内通过，Phase 1 工作包已建立。** Phase 1 聚焦生产级播放基础：固定回归、状态与错误契约、生命周期、视频 HLS/字幕验收和发布流程。当前工作包与下一步以 [Phase 1 进度](docs/implementation/phase-1-progress.md) 为准，范围与完成标准见 [Phase 1 计划](docs/implementation/phase-1-plan.md)。
+**当前阶段：Phase 0 与 Phase 1 已在声明范围内通过（2026-10-18）。** P1-00～P1-05 已完成固定回归、状态与错误契约、生命周期、视频 HLS/字幕验收和最终发布。PERF-02 与额外硬件/长期验证独立保留；后续产品交互工作另行规划。详见 [Phase 1 验收](docs/implementation/evidence/P1-05-01-release-and-phase-1-acceptance.md)、[进度与限制](docs/implementation/phase-1-progress.md)。
 
 已支持本地文件、HTTP/HTTPS 直链、基础 HLS、播放/暂停、精确跳转、音量/静音、轨道选择、媒体信息和全屏。视频根据片源与 Windows HDR 状态使用 PQ 10-bit 输出或 SDR 色调映射；优先 D3D11VA，经 ANGLE 直接传递 GPU 帧，不可用时回退软件解码。
 
 2026-09-12 的 RTX 3070 验收记录确认：PerMonitorV2 下全屏表面为 3840×2160，4K60 HDR TS 稳态约 59.94 fps；HDR 开关切换、EOF 信息保留与正常关闭通过。TS 跳转的关键帧起读补丁也已通过外机复测。结论限于单显示器、150% DPI、短时段和用户目视，详见 [Phase 0 验收](docs/implementation/evidence/P0-11-01-phase-0-acceptance.md) 与 [TS 修复证据](docs/implementation/evidence/ts-seek-keyframe-2026-09-12.md)。
 
-最近一次源码复核（`f793d0b`，2026-09-12）：Debug/Release 构建均 0 警告、0 错误；Debug 显式提供四项媒体样本后 **188 通过、无跳过**，Release 常规回归 **184 通过、4 项媒体测试跳过**。这些测试证明功能与像素通路，不代表长时间或全场景性能通过，详见 [Phase 1 基线证据](docs/implementation/evidence/P1-00-01-baseline-and-release-entry.md)。
+最终源码复核（2026-10-18，`d7522cb` 上的工作区快照）：Debug/Release 构建各 0 警告、0 错误；默认回归各 298 通过、9 跳过，显式提供全部媒体输入后各 **307 通过、0 失败、0 跳过**。新 Release 包的原生/许可/源码快照、最终目录播放退出和 ZIP 校验均通过。功能测试不代表性能通过：本轮 RDP / 4K 离屏无读回测量约 10.67 fps，PERF-02 仍需跟进。
 
 ## 构建与运行
 
@@ -26,15 +26,17 @@ dotnet test mpv-winui.slnx -p:Platform=x64 --no-build --no-restore
 
 ## 当前测试包与发布
 
-**[当前发布包入口](docs/implementation/release-status.md)** 统一登记可用 ZIP、解压目录、启动方法、源码提交、哈希及验证范围。当前登记的是 2026-10-02 的 GTX 1060 Release x64 自包含测试包，附两份 4K60 对照素材与测试入口；用户已确认 GTX 1060 HDR→SDR 窗口/全屏场景正常，P1-01 / PERF-01 已关闭，PERF-02 采样对照仍跟进。9 月 22 日 RTX 3070 日志已复核，边界见发布入口。`artifacts/mvp/`、`artifacts/hdr-4k/win-x64/` 和 `artifacts/phase-0/win-x64/` 是历史产物，不作为最新版本入口。
+**[当前发布包入口](docs/implementation/release-status.md)** 登记 2026-10-18 的 Phase 1 Release x64 自包含包（约 135 MB）、对应源码快照、哈希与验证范围，附三份 4K 样片及 P1-04 小样本。691 个包文件逐项核验，两次最终目录运行均退出 0。此前 GTX/RTX 包及用户复测保留各自历史身份；`artifacts/mvp/` 等历史目录不是最新版本入口。
 
 生成新的独立测试包（PowerShell 7，仓库根目录）：
 
 ```powershell
-pwsh -File build/testing/publish-rtx3070.ps1 -IncludeTestMedia
+pwsh -File build/testing/publish-phase1.ps1 -HdrMediaDirectory artifacts/p1-05/media -P104MediaDirectory artifacts/p1-04/media-final
+# 从返回的目录完成播放/退出验证，移出本机日志后封包：
+pwsh -File build/testing/seal-phase1-package.ps1 -PackageDirectory <返回的目录>
 ```
 
-脚本在 `artifacts/rtx3070/` 下创建带时间与唯一标识的目录和 ZIP，包含 .NET/WinUI 运行时、许可证、符号及构建清单。`-IncludeTestMedia` 需要已生成并核验的三份 4K 合成样片；不附带样片时省略该参数。生成完成后按发布入口中的核验规则登记，不能仅凭目录时间把新包视为已验收。
+脚本在 `artifacts/phase-1/` 创建带时间与唯一标识的目录及源码快照，封包脚本核对原生/托管许可、素材和 ZIP 条目。输入素材须先生成并核验，步骤见 [测试与发布工具](build/testing/README.md#phase-1-发布与封包)。`sourceDirty=true` 时必须使用对应快照，不能仅以基线提交替代；生成完成不自动等于已验收。
 
 完整解压后，直接运行 `MpvShell.App.exe` 使用默认日志；双击 `Start-Debug.cmd` 开启详细日志，测试后关闭应用，在 `Test-Notes.txt` 填写复现步骤，再运行 `Collect-Logs.cmd` 收集日志。包内 `README-测试说明.md` 提供具体操作。底层发布脚本仍为 `build/testing/publish-mvp.ps1`，生成单独目录时应显式传入 `-OutputDirectory`，其历史默认目录不代表当前发布入口。
 

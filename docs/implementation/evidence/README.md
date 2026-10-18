@@ -5,6 +5,8 @@
 - 当前计划：[Phase 1 工作包与验收标准](../phase-1-plan.md)
 - 当前状态：[Phase 1 进度](../phase-1-progress.md)
 - 当前包：[发布入口](../release-status.md)
+- [P1-05 发布与 Phase 1 范围内验收（2026-10-18）](P1-05-01-release-and-phase-1-acceptance.md)
+- [P1-04 视频 HLS、字幕与媒体信息验收（2026-10-18）](P1-04-01-video-hls-subtitles-and-media-information.md)
 - [P1-03 资源所有权、释放顺序与页面生命周期交接（2026-10-16）](P1-03-01-lifecycle-ownership-and-release-order.md)
 - [P1-03 应用内生命周期场景记录（2026-10-16）](P1-03-02-app-lifecycle-scenarios.md)
 - [P1-03 验收汇总（2026-10-16）](P1-03-03-p1-03-acceptance.md)

@@ -5,6 +5,8 @@
 
 # Preserve upstream license bytes for license-origins.json SHA-256 verification.
 src/MpvShell.App/Assets/ThirdParty/** -text -whitespace
+# 保留托管依赖许可原文，避免 Windows 检出转换换行后破坏固定 SHA-256。
+build/testing/licenses/*-LICENSE -text -whitespace
 
 ###############################################################################
 # Set default behavior for command prompt diff.

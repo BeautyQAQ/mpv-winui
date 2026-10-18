@@ -302,14 +302,32 @@ public sealed class LibMpvBackend : IPlayerBackend
             case "mute": _state = _state with { IsMuted = value is true }; PublishState(); break;
             case "paused-for-cache": PublishBuffering(value is true && _mediaActive && !_ended); break;
             case "track-list":
-                _tracks = ParseTracks(value); Publish(new TracksChanged(_tracks)); break;
+                _tracks = ParseTracks(value);
+                Publish(new TracksChanged(_tracks));
+                // EOF 清空整份轨道列表时保留最后媒体信息；视频仍在播放且音轨全部取消选择，
+                // 则是当前媒体的音频关闭。无论 codec=null 与 track-list 的送达顺序如何，都清除旧编码。
+                if (_loaded && _mediaActive && !_ended && value is object?[] nodes
+                    && nodes.OfType<Dictionary<string, object?>>().Any(node =>
+                        Text(node.GetValueOrDefault("type")) == "video" && node.GetValueOrDefault("selected") is true)
+                    && _tracks.Any(track => track.Kind == "audio")
+                    && !_tracks.Any(track => track.Kind == "audio" && track.Selected))
+                {
+                    _properties["audio-codec-name"] = null;
+                    PublishInfo();
+                }
+                break;
             default:
-                var next = BuildInfo(_properties);
-                if (next != _info) { _info = next; Publish(new MediaInfoChanged(_info)); }
+                PublishInfo();
                 break;
         }
         LogPlaybackDiagnostics(force: property is "hwdec-current" or "hwdec-interop" or "video-params"
             or "pause" or "idle-active" or "paused-for-cache" or "video-codec" or "audio-codec-name");
+    }
+
+    private void PublishInfo()
+    {
+        var next = BuildInfo(_properties);
+        if (next != _info) { _info = next; Publish(new MediaInfoChanged(_info)); }
     }
 
     private void LogPlaybackDiagnostics(bool force = false)

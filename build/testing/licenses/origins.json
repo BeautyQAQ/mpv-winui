@@ -1,0 +1,26 @@
+{
+  "description": "NuGet 包仅提供 MIT 表达式时，保留该包 nuspec 所指提交的许可原文；发布时不联网。",
+  "files": [
+    {
+      "packages": ["SharpGen.Runtime/2.4.2-beta", "SharpGen.Runtime.COM/2.4.2-beta"],
+      "file": "SharpGenTools-LICENSE",
+      "commit": "6990bcafe124a4c22515ad19cee5a081da8db67b",
+      "url": "https://raw.githubusercontent.com/SharpGenTools/SharpGenTools/6990bcafe124a4c22515ad19cee5a081da8db67b/LICENSE.txt",
+      "sha256": "1CC7ABD1E97575838535484BEF6E4AB14E81681DDF7837672ACEDE5FCA1D4E30"
+    },
+    {
+      "packages": ["Vortice.Direct3D11/3.8.3", "Vortice.DirectX/3.8.3", "Vortice.DXGI/3.8.3"],
+      "file": "Vortice.Windows-LICENSE",
+      "commit": "9e609cb9439c9872aa1b339f177e40ec96f77239",
+      "url": "https://raw.githubusercontent.com/amerkoleci/Vortice.Windows/9e609cb9439c9872aa1b339f177e40ec96f77239/LICENSE",
+      "sha256": "82BD4E84D144BEBBB519ED05899F0CEAEAF2E0F95160AC32FD8CC388710C76D0"
+    },
+    {
+      "packages": ["Vortice.Mathematics/2.1.0"],
+      "file": "Vortice.Mathematics-LICENSE",
+      "commit": "fa05ec6dcba48f3f7331791da6dc7f3d866b2ad6",
+      "url": "https://raw.githubusercontent.com/amerkoleci/Vortice.Mathematics/fa05ec6dcba48f3f7331791da6dc7f3d866b2ad6/LICENSE",
+      "sha256": "CF72351FA2E9F2EB181AF7FD508DD73DA1D84BA43575CB98F7AF22F26A81AF5E"
+    }
+  ]
+}

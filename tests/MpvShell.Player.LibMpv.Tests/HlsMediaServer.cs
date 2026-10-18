@@ -7,9 +7,8 @@ using System.Text;
 namespace MpvShell.Player.LibMpv.Tests;
 
 /// <summary>
-/// 仅绑定本机随机端口的测试 HLS 服务：一份 VOD 播放列表加若干打包 AAC（ADTS）分片，全部在内存里生成，
-/// 不依赖外部工具或公网地址。分片是同一段静音 AAC-LC 帧的重复，HLS 规范与 FFmpeg 的 hls 解复用器都支持
-/// 无 MPEG-TS 封装的打包音频分片。
+/// 仅绑定本机随机端口的测试 HLS 服务。默认构造在内存生成静音 AAC（ADTS）VOD，
+/// P1-04 重载读取已核验的固定视频 MPEG-TS 分片；服务和测试运行时均不调用外部编码器或访问公网。
 /// </summary>
 internal sealed class HlsMediaServer : IAsyncDisposable
 {
@@ -24,6 +23,9 @@ internal sealed class HlsMediaServer : IAsyncDisposable
     private readonly ConcurrentBag<Task> _clients = [];
     private readonly Dictionary<string, (string ContentType, byte[] Body)> _resources = new(StringComparer.Ordinal);
     private readonly Task _acceptLoop;
+    private readonly string? _heldPath;
+    private readonly TaskCompletionSource _segmentRequested = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly TaskCompletionSource _releaseSegment = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     internal ConcurrentQueue<string> Requests { get; } = new();
     internal ConcurrentQueue<int> ResponseCodes { get; } = new();
@@ -33,6 +35,34 @@ internal sealed class HlsMediaServer : IAsyncDisposable
     internal int SegmentCount { get; }
     internal double SegmentSeconds { get; }
     internal double TotalSeconds { get; }
+    internal Task SegmentRequested => _segmentRequested.Task;
+    internal void ReleaseSegment() => _releaseSegment.TrySetResult();
+
+    // P1-04 的固定视频 VOD 复用同一 HTTP 实现；资源只来自已核验素材目录的六个分片和播放列表。
+    internal HlsMediaServer(string mediaDirectory, string? heldSegment = null)
+    {
+        SegmentCount = 6;
+        SegmentSeconds = 2;
+        TotalSeconds = 12;
+        var directory = Path.Combine(mediaDirectory, "hls");
+        var playlist = File.ReadAllText(Path.Combine(directory, "index.m3u8"));
+        var broken = playlist;
+        for (var index = 0; index < SegmentCount; index++)
+        {
+            var name = $"part{index:00}.ts";
+            _resources[$"/live/{name}"] = ("video/mp2t", File.ReadAllBytes(Path.Combine(directory, name)));
+            broken = broken.Replace(name, $"missing{index:00}.ts", StringComparison.Ordinal);
+        }
+        _resources["/live/index.m3u8"] = ("application/vnd.apple.mpegurl", Encoding.UTF8.GetBytes(playlist));
+        _resources["/live/broken.m3u8"] = ("application/vnd.apple.mpegurl", Encoding.UTF8.GetBytes(broken));
+        _heldPath = heldSegment is null ? null : $"/live/{heldSegment}";
+        _listener.Start();
+        var port = ((IPEndPoint)_listener.LocalEndpoint).Port;
+        PlaylistUrl = $"http://127.0.0.1:{port}/live/index.m3u8?token=private-hls-token";
+        MissingPlaylistUrl = $"http://127.0.0.1:{port}/live/missing.m3u8";
+        BrokenSegmentPlaylistUrl = $"http://127.0.0.1:{port}/live/broken.m3u8";
+        _acceptLoop = AcceptAsync();
+    }
 
     internal HlsMediaServer(int segmentCount = 4, int framesPerSegment = 86)
     {
@@ -82,6 +112,7 @@ internal sealed class HlsMediaServer : IAsyncDisposable
         }
         catch (OperationCanceledException) when (_shutdown.IsCancellationRequested) { }
         catch (SocketException) when (_shutdown.IsCancellationRequested) { }
+        catch (ObjectDisposedException) when (_shutdown.IsCancellationRequested) { }
     }
 
     private async Task HandleAsync(TcpClient client)
@@ -111,6 +142,11 @@ internal sealed class HlsMediaServer : IAsyncDisposable
 
                     var path = parts[1].Split('?')[0];
                     Requests.Enqueue(path);
+                    if (path == _heldPath)
+                    {
+                        _segmentRequested.TrySetResult();
+                        await _releaseSegment.Task.WaitAsync(_shutdown.Token);
+                    }
                     if (!_resources.TryGetValue(path, out var resource))
                     {
                         await WriteResponseAsync(stream, 404, "Not Found", "text/plain", [], 0, 0, false, true, keepAlive);
