@@ -43,6 +43,9 @@
     <File Path="docs/implementation/phase-1-progress.md" />
     <File Path="docs/implementation/phase-2-plan.md" />
     <File Path="docs/implementation/phase-2-progress.md" />
+    <File Path="docs/implementation/phase-3-plan.md" />
+    <File Path="docs/implementation/phase-3-progress.md" />
+    <File Path="docs/implementation/evidence/P3-00-01-baseline-and-candidate.md" />
     <File Path="docs/implementation/evidence/P2-03-01-timeline-and-gesture-feedback.md" />
     <File Path="docs/implementation/evidence/P2-04-01-player-interface.md" />
     <File Path="docs/implementation/evidence/P2-05-01-phase-2-acceptance.md" />

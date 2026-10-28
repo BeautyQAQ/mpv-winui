@@ -2,9 +2,10 @@
 
 本目录保存可提交的验证记录；原始测试日志、TRX、报告和媒体保存在记录指定的 `artifacts/` 路径，不随 Git 提交。记录必须区分本次执行、继承的历史证据和未验证项，保留失败历史。
 
-- 当前计划：[Phase 2 工作包与验收标准](../phase-2-plan.md)
-- 当前状态：[Phase 2 进度](../phase-2-progress.md)
-- 当前包：[发布入口](../release-status.md)
+- 当前计划：[Phase 3 工作包与验收标准](../phase-3-plan.md)
+- 当前状态：[Phase 3 进度](../phase-3-progress.md)
+- 候选及历史通过包：[发布入口](../release-status.md)
+- [P3-00 当前版本基线与候选测试包（2026-10-28；待验证，显式原生崩溃及 GUI 缺口保留）](P3-00-01-baseline-and-candidate.md)
 - [P2-05 Phase 2 阶段验收（2026-10-18；声明范围内通过）](P2-05-01-phase-2-acceptance.md)
 - [P2-04 播放器界面完善（2026-10-18；本机功能验收通过）](P2-04-01-player-interface.md)
 - [P2-03 时间轴预览与手势反馈（2026-10-18；声明范围内通过）](P2-03-01-timeline-and-gesture-feedback.md)

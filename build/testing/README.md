@@ -1,6 +1,19 @@
 # 本机 HTTP 播放验证
 
-当前工作包与验收标准见 [Phase 1 计划](../../docs/implementation/phase-1-plan.md)，可用 ZIP、启动方式和发布登记见 [当前发布包入口](../../docs/implementation/release-status.md)。本页说明测试工具，不指定最新产物目录。
+阶段状态见 [Phase 3 进度](../../docs/implementation/phase-3-progress.md)，可用 ZIP、启动方式和发布登记见 [当前发布包入口](../../docs/implementation/release-status.md)。本页说明测试工具，不指定最新产物目录。
+
+## 当前版本回归基线
+
+`test-candidate-baseline.ps1` 顺序执行解决方案 x64 Debug/Release 构建与默认、显式素材测试，保留各命令退出码、日志、逐项 TRX 汇总、环境、运行脚本副本以及测试前后源码/素材哈希。已有报告目录拒绝覆盖，测试失败不会自动重跑或放宽断言。
+
+```powershell
+pwsh -File build/testing/test-candidate-baseline.ps1 -ReportDirectory artifacts/p3-00/default-baseline -TestMode Default -AssessmentDate 2026-10-28
+pwsh -File build/testing/test-candidate-baseline.ps1 -ReportDirectory artifacts/p3-00/explicit-baseline -TestMode Explicit -MediaInputsPath artifacts/p3-00/media-inputs.json -AssessmentDate 2026-10-28
+```
+
+也可使用 `-TestMode All` 在每个配置构建后执行两种测试。输入 JSON 需包含 `environment` 对象（仅允许 `MPVSHELL_TEST_*`）、`inputs` 和 `manifests` 数组（每项为绝对 `path` 与 `sha256`）；素材使用本页生成器准备，不能把另一台机器的路径直接当作本机输入。报告目录由 runner 按配置隔离，默认测试清除显式输入，结束后恢复原进程环境。显式测试有跳过、失败或不完整 TRX 时入口返回非零；硬件不支持导致的失败同样保留，不改成通过。
+
+## 本机 HTTP 服务
 
 `serve-media.py` 仅依赖 Python 标准库，把指定的本地 MP4 文件发布到 `127.0.0.1`，便于使用应用的 URL 输入验证 HTTP 播放和跳转。它只提供 `/sample.mp4`，支持完整 GET、HEAD 和单段字节 Range，不提供目录浏览。
 
@@ -90,6 +103,8 @@ dotnet test mpv-winui.slnx -p:Platform=x64 --filter 'FullyQualifiedName~VideoHls
 
 ## Phase 1 发布与封包
 
+此节保留历史包入口。当前源码的新候选包使用下方的[通用候选包发布与封包](#通用候选包发布与封包)；原 `publish-phase1.ps1` / `seal-phase1-package.ps1` 已作为兼容包装器调用同一实现，不存在两套发布校验逻辑。
+
 先完成 x64 Debug/Release 构建与回归，再用两个已经生成并校验过的素材目录创建独立候选包（PowerShell 7）：
 
 ```powershell
@@ -111,3 +126,19 @@ pwsh -File build/testing/seal-phase1-package.ps1 -PackageDirectory artifacts/pha
 ```
 
 封包会验证源码 ZIP 的每个文件、原生构建文件与许可证副本、35 项许可证来源哈希、素材及原生闭包；生成 `package-content-sha256.json`，逐条校验成品 ZIP 内容，并写出外部 SHA-256 与核验报告。不覆盖已有 ZIP，不把本机日志带入交付包。该脚本只证明内容一致性，不替代实际 GUI 验收，也不宣称二进制逐字节可重现；全部通过后才更新 [发布入口](../../docs/implementation/release-status.md)。
+
+## 通用候选包发布与封包
+
+先完成当前源码的 x64 Debug/Release 构建与回归，固定素材清单及哈希。使用同一套原生闭包、会话烟雾、源码快照和许可校验创建新的独立目录：
+
+```powershell
+pwsh -File build/testing/publish-candidate.ps1 -HdrMediaDirectory artifacts/p3-baseline/media-4k -P104MediaDirectory artifacts/p3-baseline/media-p1-04 -PackageLabel phase3-candidate -PackageDate 20261028
+# 在输出的最终目录完成真实操作，收集日志并移出包内 logs/，再执行：
+pwsh -File build/testing/seal-candidate-package.ps1 -PackageDirectory artifacts/candidates/MpvShell-phase3-candidate-实际包名
+```
+
+`PackageLabel` 默认 `phase3-candidate`，只接受小写字母、数字和连字符；可用于后续版本标签。`PackageDate` 默认执行机日期，可显式使用本轮登记日期（八位 `yyyyMMdd`）；它只是包名标签，真实构建时间由 `build-info.json.builtAtUtc` 记录。默认输出 `artifacts/candidates/`，`ArtifactDirectory` 可指定仓库 `artifacts/` 内的其他子目录。名称含唯一 ID，不覆盖既有产物；`PackageTitle` 可改变包内中文说明标题。
+
+`build-info.json` 的 schemaVersion 3 增加包标签、日期标签、候选身份和日志包前缀，其余来源与哈希字段保持原含义；兼容封包器仍接受历史 schemaVersion 2。调用方须检查 `pwsh` 的退出码；发布步骤遇到 `dotnet publish`、SDK 版本读取、Git 状态读取或内容校验失败都会终止，不能仅凭目录存在判定成功。发布成功也不等同于已完成 GUI 或 Phase 3 验收。
+
+从最终目录验证打开媒体、停止/重播、历史保存与重启恢复、正常退出，并验证 `Start-Debug` / `Collect-Logs`。实际操作产生的个人历史与运行日志应保存在验收目录，封包前将 `logs/` 移出候选目录。封包逐项核对源码 ZIP、四个原生 DLL、许可、素材与全部 ZIP 条目，产生 `.verification.json` 和 `.sha256`。新的已验证候选包单独登记到发布入口，保留旧包身份及未验证的性能、硬件与长期范围。
