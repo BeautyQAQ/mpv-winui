@@ -73,6 +73,15 @@ pwsh -File build/testing/test-app-recovery.ps1 -NoBuild -Mode playback -MediaPat
 
 ## 应用内自然播放性能测量
 
+`test-performance-comparison.ps1` 对固定 4K30 HEVC/AV1 执行有采样/无采样配对：每场景默认三对、顺序交替，共 12 次，固定 3840×2160 BGRA8 SDR、vsync 1、预热 2 秒/目标媒体窗口 5 秒。素材目录需要 `media-manifest.json`，脚本逐项核验哈希并保存每轮命令、TRX、JSON 与输入/二进制身份：
+
+```powershell
+pwsh -File build/testing/test-performance-comparison.ps1 -NoBuild -Configuration Debug -MediaDirectory artifacts/p1-05/media
+pwsh -File build/testing/test-performance-comparison.ps1 -NoBuild -Configuration Release -D3D11DebugLayer Off -MediaDirectory artifacts/p1-05/media
+```
+
+使用 `-NoBuild` 前需固定对应配置的实际构建身份；去除此参数会先构建。可用 `-ReportDirectory` 指定仓库 `artifacts/` 下的新根目录，默认每次创建唯一运行目录。退出 0 仅表示测量编排完成，R1 仍须检查 fps≥29.4、VO 丢帧≤实际呈现帧数的 1%、解码丢帧为零和场景可比性；离屏结果不代替窗口、物理 HDR 或长期验收。UU 与 RDP 的本机对照及限制见 [2026-11-03 调查](../../docs/implementation/evidence/P3-01-02-gtx1060-uu-remote-performance.md)。
+
 `performance` 模式（P1-01 新增）在真实窗口内做**无采样**测量：预热 `-WarmupSeconds`（默认 3）后进入 `-SteadySeconds`（默认 30）的稳态窗口，窗口内不做任何 CPU 读回、不强制重绘，只读取渲染线程累计的呈现 fps、Render/Present 耗时分布（均值/中位/p95/最大）和 mpv 的 VO/解码丢帧差值。窗口结束后才读回一次确认画面非黑。报告不对吞吐设通过条件，判定规则见 [P1-01 记录](../../docs/implementation/evidence/P1-01-01-fixed-media-and-performance-scenarios.md)。
 
 ```powershell
