@@ -102,8 +102,11 @@ public sealed class BackendStopAndSpeedTests
         backend.OnSessionEvent(new(MpvEventId.PropertyChange, "eof-reached", true));
         await backend.SetSpeedAsync(2, timeout.Token);
         await backend.SetVolumeAsync(39, timeout.Token);
-        var events = await ReadUntilAsync(backend, item => item is PlaybackStateChanged { State.Volume: 39 }, timeout.Token);
+        // 不同属性的观察通知会合并并异步送达；音量到达不能作为倍速通知已到达的屏障。
+        var events = await ReadUntilAsync(backend,
+            item => item is PlaybackStateChanged { State.Volume: 39, State.Speed: 2 }, timeout.Token);
         AssertStopped(events.OfType<PlaybackStateChanged>().Last().State, media.MediaUrl, 2);
+        (await session.GetPropertyAsync("speed", timeout.Token)).Should().Be(2.0);
         events.OfType<BackendFaulted>().Should().BeEmpty();
         events.OfType<EndReached>().Should().BeEmpty();
         (await backend.GetInfoSnapshotAsync(timeout.Token)).VideoCodec.Should().BeNull();

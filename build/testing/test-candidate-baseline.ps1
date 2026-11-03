@@ -4,7 +4,8 @@ param(
     [Parameter(Mandatory)][string] $ReportDirectory,
     [ValidateSet('Default', 'Explicit', 'All')][string] $TestMode = 'All',
     [string] $MediaInputsPath,
-    [string] $AssessmentDate = (Get-Date -Format 'yyyy-MM-dd')
+    [string] $AssessmentDate = (Get-Date -Format 'yyyy-MM-dd'),
+    [ValidatePattern('^[1-9][0-9]*(ms|s|m|h)$')][string] $HangTimeout
 )
 
 Set-StrictMode -Version Latest
@@ -46,8 +47,11 @@ function Invoke-Dotnet([string] $Name, [string[]] $Arguments) {
 }
 function Clear-TestEnvironment {
     foreach ($variable in @(Get-ChildItem Env: | Where-Object Name -like 'MPVSHELL_TEST_*')) {
-        [Environment]::SetEnvironmentVariable($variable.Name, $null, 'Process')
+        # PowerShell 7.5+ 将传给 .NET string 参数的 $null 转为空串，变量仍会被子进程继承。
+        # 通过 Env: provider 删除，保证默认轮与显式轮之间不存在残留的空报告路径/阈值。
+        Remove-Item -LiteralPath ('Env:' + $variable.Name)
     }
+    if (Get-ChildItem Env: | Where-Object Name -like 'MPVSHELL_TEST_*') { throw '测试环境变量未完全移除。' }
 }
 function Test-MediaInputs([string] $Name) {
     if (-not $media) { return }
@@ -83,7 +87,8 @@ Save-Json 'environment.json' ([ordered]@{
     sdk = (& dotnet --version); powershell = $PSVersionTable.PSVersion.ToString(); os = [Environment]::OSVersion.VersionString
     runnerSha256 = (Get-FileHash -LiteralPath (Join-Path $reportRoot 'test-candidate-baseline.executed.ps1')).Hash
     graphics = @(Get-CimInstance Win32_VideoController | Select-Object Name, DriverVersion, CurrentHorizontalResolution, CurrentVerticalResolution)
-    testMode = $TestMode; note = '功能及测量测试结果不替代性能判定或其他硬件验收。'
+    testMode = $TestMode; hangTimeout = $HangTimeout
+    note = '功能及测量测试结果不替代性能判定或其他硬件验收。'
 })
 $failed = $false
 Push-Location $repository
@@ -109,7 +114,12 @@ try {
             }
             $name = "$configuration-$($mode.ToLowerInvariant())"
             $trxDirectory = Join-Path $reportRoot $name
-            $code = Invoke-Dotnet $name @('test', 'mpv-winui.slnx', '-p:Platform=x64', '-c', $configuration, '--no-build', '--no-restore', '-m:1', '--logger', 'trx', '--results-directory', $trxDirectory)
+            $testArguments = @('test', 'mpv-winui.slnx', '-p:Platform=x64', '-c', $configuration, '--no-build', '--no-restore', '-m:1', '--logger', 'trx', '--results-directory', $trxDirectory)
+            if ($HangTimeout) {
+                # 单项长时间无完成结果时，保存执行序列及小型转储并让命令失败，不把超时算作跳过。
+                $testArguments += @('--blame', '--blame-hang-timeout', $HangTimeout, '--blame-hang-dump-type', 'mini')
+            }
+            $code = Invoke-Dotnet $name $testArguments
             $outcomes = @()
             $reports = @(Get-ChildItem -LiteralPath $trxDirectory -Filter '*.trx' -ErrorAction SilentlyContinue)
             foreach ($file in $reports) {

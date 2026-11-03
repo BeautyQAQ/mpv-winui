@@ -9,7 +9,7 @@ namespace MpvShell.App.Tests;
 public sealed class PlayerViewModelRecentHistoryTests
 {
     [Fact]
-    public async Task Initialize_should_restore_order_without_loading_media_or_waiting_for_the_disk()
+    public Task Initialize_should_restore_order_without_loading_media_or_waiting_for_the_disk() => SingleThreadTestContext.RunAsync(async () =>
     {
         var read = Completion<IReadOnlyList<string>>();
         var loaded = false;
@@ -29,10 +29,10 @@ public sealed class PlayerViewModelRecentHistoryTests
         vm.State.CurrentUrl.Should().BeNull();
         loaded.Should().BeFalse("恢复历史不应自动打开媒体");
         storage.Writes.Should().BeEmpty();
-    }
+    });
 
     [Fact]
-    public async Task A_read_failure_should_not_prevent_startup_or_become_a_playback_error()
+    public Task A_read_failure_should_not_prevent_startup_or_become_a_playback_error() => SingleThreadTestContext.RunAsync(async () =>
     {
         var storage = new TestStorage { ReadHandler = _ => Task.FromException<IReadOnlyList<string>>(new IOException("无法读取")) };
         await using var vm = CreateViewModel(new EventPublishingBackend(), storage);
@@ -51,10 +51,10 @@ public sealed class PlayerViewModelRecentHistoryTests
         vm.State.CurrentUrl.Should().Be("https://media.example/new.mp4");
         vm.RecentUrls.Should().Equal("https://media.example/new.mp4");
         vm.RecentHistoryMessage.Should().BeNull("后续成功保存可恢复持久化");
-    }
+    });
 
     [Fact]
-    public async Task Successful_load_should_save_the_trimmed_source_and_preserve_existing_order()
+    public Task Successful_load_should_save_the_trimmed_source_and_preserve_existing_order() => SingleThreadTestContext.RunAsync(async () =>
     {
         var storage = new TestStorage { InitialItems = ["https://media.example/old.mp4", "https://media.example/first.mp4"] };
         await using var vm = CreateViewModel(new EventPublishingBackend(), storage);
@@ -67,13 +67,13 @@ public sealed class PlayerViewModelRecentHistoryTests
         storage.Writes.Should().ContainSingle().Which.Should().Equal("https://media.example/first.mp4", "https://media.example/old.mp4");
         storage.WriteTokens.Should().OnlyContain(token => !token.CanBeCanceled);
         vm.ErrorMessage.Should().BeNull();
-    }
+    });
 
     [Theory]
     [InlineData("load")]
     [InlineData("info")]
     [InlineData("tracks")]
-    public async Task A_failed_open_should_not_record_history(string stage)
+    public Task A_failed_open_should_not_record_history(string stage) => SingleThreadTestContext.RunAsync(async () =>
     {
         var failure = new InvalidOperationException("媒体加载失败");
         var storage = new TestStorage();
@@ -92,13 +92,13 @@ public sealed class PlayerViewModelRecentHistoryTests
         storage.Writes.Should().BeEmpty();
         vm.ErrorMessage.Should().Be("媒体加载失败");
         vm.RecentHistoryMessage.Should().BeNull();
-    }
+    });
 
     [Theory]
     [InlineData("load")]
     [InlineData("info")]
     [InlineData("tracks")]
-    public async Task An_obsolete_open_should_not_record_history(string stage)
+    public Task An_obsolete_open_should_not_record_history(string stage) => SingleThreadTestContext.RunAsync(async () =>
     {
         var blocked = new BlockedMediaOperation(stage);
         var storage = new TestStorage();
@@ -115,13 +115,13 @@ public sealed class PlayerViewModelRecentHistoryTests
         storage.Writes.Should().ContainSingle().Which.Should().Equal("https://media.example/new.mp4");
         vm.State.CurrentUrl.Should().Be("https://media.example/new.mp4");
         vm.ErrorMessage.Should().BeNull();
-    }
+    });
 
     [Theory]
     [InlineData("load")]
     [InlineData("info")]
     [InlineData("tracks")]
-    public async Task Clearing_during_an_open_should_preserve_playback_but_not_restore_pre_clear_history(string stage)
+    public Task Clearing_during_an_open_should_preserve_playback_but_not_restore_pre_clear_history(string stage) => SingleThreadTestContext.RunAsync(async () =>
     {
         var blocked = new BlockedMediaOperation(stage);
         var storage = new TestStorage { InitialItems = ["https://media.example/old.mp4"] };
@@ -144,10 +144,10 @@ public sealed class PlayerViewModelRecentHistoryTests
         await OpenAsync(vm, "https://media.example/new.mp4");
         await vm.WaitForRecentHistoryAsync();
         vm.RecentUrls.Should().Equal("https://media.example/new.mp4");
-    }
+    });
 
     [Fact]
-    public async Task A_slow_save_should_not_block_stop_or_a_new_open_or_replace_its_error()
+    public Task A_slow_save_should_not_block_stop_or_a_new_open_or_replace_its_error() => SingleThreadTestContext.RunAsync(async () =>
     {
         var write = Completion();
         var stopCalls = 0;
@@ -174,11 +174,14 @@ public sealed class PlayerViewModelRecentHistoryTests
         vm.UrlText.Should().Be(currentInput);
         vm.ErrorMessage.Should().Be("新媒体失败");
         vm.RecentUrls.Should().Equal("https://media.example/new.mp4", "https://media.example/first.mp4");
-    }
+    });
 
     [Fact]
-    public async Task Clear_should_follow_an_accepted_save_and_precede_subsequent_open_history()
+    public Task Clear_should_follow_an_accepted_save_and_precede_subsequent_open_history() => SingleThreadTestContext.RunAsync(async () =>
     {
+        SynchronizationContext.Current.Should().BeOfType<SingleThreadTestContext>();
+        var uiThread = Environment.CurrentManagedThreadId;
+        var refreshThreads = new System.Collections.Concurrent.ConcurrentBag<int>();
         var firstWrite = Completion();
         var clearWrite = Completion();
         var clearStarted = Completion();
@@ -191,6 +194,7 @@ public sealed class PlayerViewModelRecentHistoryTests
             },
         };
         await using var vm = CreateViewModel(new EventPublishingBackend(), storage);
+        vm.RecentUrls.CollectionChanged += (_, _) => refreshThreads.Add(Environment.CurrentManagedThreadId);
         await OpenAsync(vm, "https://media.example/first.mp4");
 
         var clear = vm.ClearRecentHistoryCommand.ExecuteAsync(null);
@@ -208,10 +212,12 @@ public sealed class PlayerViewModelRecentHistoryTests
         storage.Writes[1].Should().BeEmpty();
         storage.Writes[2].Should().Equal("https://media.example/new.mp4");
         vm.RecentUrls.Should().Equal("https://media.example/new.mp4");
-    }
+        refreshThreads.Should().NotBeEmpty().And.OnlyContain(thread => thread == uiThread,
+            "最近记录列表的所有刷新应像真实页面一样串行回到同一 UI 线程");
+    });
 
     [Fact]
-    public async Task Clearing_during_startup_read_should_not_restore_the_loaded_history()
+    public Task Clearing_during_startup_read_should_not_restore_the_loaded_history() => SingleThreadTestContext.RunAsync(async () =>
     {
         var read = Completion<IReadOnlyList<string>>();
         var write = Completion();
@@ -233,10 +239,10 @@ public sealed class PlayerViewModelRecentHistoryTests
         await vm.WaitForRecentHistoryAsync();
         storage.Writes.Should().ContainSingle().Which.Should().BeEmpty();
         vm.RecentUrls.Should().BeEmpty();
-    }
+    });
 
     [Fact]
-    public async Task Save_failure_should_remain_separate_from_playback_and_allow_a_later_retry()
+    public Task Save_failure_should_remain_separate_from_playback_and_allow_a_later_retry() => SingleThreadTestContext.RunAsync(async () =>
     {
         var storage = new TestStorage { WriteHandler = (_, _) => Task.FromException(new IOException("无法写入")) };
         await using var vm = CreateViewModel(new EventPublishingBackend(), storage);
@@ -255,12 +261,12 @@ public sealed class PlayerViewModelRecentHistoryTests
         vm.RecentHistoryMessage.Should().BeNull();
         vm.RecentHistoryMessageVisibility.Should().Be(Visibility.Collapsed);
         vm.State.CurrentUrl.Should().Be("https://media.example/first.mp4");
-    }
+    });
 
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task Dispose_should_release_backend_then_wait_for_history_without_updating_closed_ui(bool initializing)
+    public Task Dispose_should_release_backend_then_wait_for_history_without_updating_closed_ui(bool initializing) => SingleThreadTestContext.RunAsync(async () =>
     {
         var write = Completion();
         var read = Completion<IReadOnlyList<string>>();
@@ -288,7 +294,7 @@ public sealed class PlayerViewModelRecentHistoryTests
         backend.DisposeCalls.Should().Be(1);
         if (!initializing) storage.Writes.Should().ContainSingle().Which.Should().Equal("https://media.example/first.mp4");
         await vm.DisposeAsync();
-    }
+    });
 
     private static PlayerViewModel CreateViewModel(EventPublishingBackend backend, IRecentUrlStorage storage) =>
         new(backend, new PlaybackInteractionCoordinator(), new GestureDecisionEngine(), new RecentUrlStore(storage), new InfoPanelViewModel());

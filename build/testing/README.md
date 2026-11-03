@@ -13,6 +13,14 @@ pwsh -File build/testing/test-candidate-baseline.ps1 -ReportDirectory artifacts/
 
 也可使用 `-TestMode All` 在每个配置构建后执行两种测试。输入 JSON 需包含 `environment` 对象（仅允许 `MPVSHELL_TEST_*`）、`inputs` 和 `manifests` 数组（每项为绝对 `path` 与 `sha256`）；素材使用本页生成器准备，不能把另一台机器的路径直接当作本机输入。报告目录由 runner 按配置隔离，默认测试清除显式输入，结束后恢复原进程环境。显式测试有跳过、失败或不完整 TRX 时入口返回非零；硬件不支持导致的失败同样保留，不改成通过。
 
+复验已有原生崩溃或挂起时，可追加 `-HangTimeout 3m`：runner 将 `--blame --blame-hang-timeout 3m --blame-hang-dump-type mini` 传给每轮测试，单项超过该时限时保存执行序列和挂起诊断并返回失败。时限须覆盖合法最长场景；不传该参数时保持原行为。崩溃序列不等于根因结论，小型转储也不保证包含全部原生状态。
+
+模式切换通过 `Env:` provider 实际删除 `MPVSHELL_TEST_*` 并检查无残留；不能用 `[Environment]::SetEnvironmentVariable($name, $null, 'Process')` 代替，PowerShell 7.5+ 会保留空字符串，导致后续默认轮继承空报告目录。调用方原有测试变量在收尾时按原值恢复。
+
+`PlayerViewModelRecentHistoryTests` 使用 `SingleThreadTestContext` 模拟页面的单线程异步上下文；磁盘服务仍可在后台完成，历史列表刷新按 UI 线程串行执行。直接在无线程上下文环境运行同一测试体，会制造真实页面没有的并发集合刷新。清空/重新打开用例另核对全部集合更新的线程，原有保存顺序和去重断言不变。
+
+后端属性集成测试须等待完整目标状态；设置命令回复、其他属性的观察通知，均不能作为目标属性通知已送达的屏障。停止后的倍速用例同时等待音量和倍速并回读原生 speed，不使用固定延迟替代状态确认。
+
 ## 本机 HTTP 服务
 
 `serve-media.py` 仅依赖 Python 标准库，把指定的本地 MP4 文件发布到 `127.0.0.1`，便于使用应用的 URL 输入验证 HTTP 播放和跳转。它只提供 `/sample.mp4`，支持完整 GET、HEAD 和单段字节 Range，不提供目录浏览。
