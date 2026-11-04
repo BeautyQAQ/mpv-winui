@@ -146,6 +146,27 @@ public sealed partial class MpvPlayerSession : IMpvPlayerSession
     private Task<object?> SetPropertyCoreAsync(string name, object value, CancellationToken cancellationToken) =>
         RequestAsync((handle, id) => SetProperty(handle, id, name, value), cancellationToken);
 
+    /// <summary>在加载媒体前禁用已知故障设备的 HEVC 硬解；保留其他编码的原有硬解策略。</summary>
+    public async ValueTask DisableHevcHardwareDecodingAsync(CancellationToken cancellationToken)
+    {
+        await _videoOutputGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var value = await GetPropertyAsync("options/hwdec-codecs", cancellationToken).ConfigureAwait(false) as string
+                ?? throw new InvalidOperationException("无法读取硬件解码编码列表。");
+            // v0.41.0 的 hwdec-codecs 是逗号分隔字符串，不是 change-list 支持的列表选项。
+            var codecs = value.Split(',', StringSplitOptions.RemoveEmptyEntries);
+            if (!codecs.Contains("hevc", StringComparer.Ordinal) && !codecs.Contains("all", StringComparer.Ordinal)) return;
+            if (codecs.Contains("all", StringComparer.Ordinal))
+                codecs = ["h264", "vc1", "vp8", "vp9", "av1", "prores"];
+            // 与色彩配置一样由渲染器生命周期串行化；重建方持有播放租约，不能再次等待播放修改锁。
+            await SetPropertyCoreAsync("options/hwdec-codecs", string.Join(',', codecs.Where(codec => codec != "hevc")), cancellationToken)
+                .ConfigureAwait(false);
+            Trace.WriteLine("[libmpv] 旧 Intel 设备兼容策略：HEVC 使用软件解码，其余编码保留 D3D11 硬解。");
+        }
+        finally { _videoOutputGate.Release(); }
+    }
+
     /// <summary>调用方先暂停呈现，再异步设置色彩目标；全部普通 C API 仍由事件/命令线程执行。</summary>
     public async ValueTask ConfigureVideoOutputAsync(MpvVideoOutputMode mode, double peakLuminance, CancellationToken cancellationToken)
     {

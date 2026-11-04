@@ -603,6 +603,7 @@ Phase 0 全部通过前，不继续堆叠完整产品 UI。
 
 - HDR 采用 PQ 10-bit / BT.2020 SwapChain；Windows HDR 关闭时进行 SDR 色调映射。FP16 存储测试不代表已经实现 scRGB 输出。
 - 默认优先 D3D11VA，经 d3d11-egl 传递 GPU 帧，不可用时回退软件解码。
+- Intel Haswell（Vendor `0x8086`，Device `0x04xx/0x0Axx/0x0Dxx`）的 HEVC 在创建 render context 前从硬解编码列表移除，规避本机旧驱动崩溃/挂起；其他编码保留原策略。兼容范围及实际验证见 [HD 4600 修复记录](implementation/evidence/P3-00-05-940m-hevc-compatibility-fix.md)。
 - 当前 C# 与 Vortice 已表达所需 COM 和资源所有权，不增加 C++/WinRT 桥接层。
 - 依据见 [Phase 0 技术决策与验收](implementation/phase-0-progress.md)，硬件结论限于已声明的机器与显示场景。
 

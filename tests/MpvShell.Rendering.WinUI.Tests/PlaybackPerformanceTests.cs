@@ -90,7 +90,7 @@ public sealed class PlaybackPerformanceTests
         using var process = Process.GetCurrentProcess();
         var initialCpu = process.TotalProcessorTime;
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(scenario.WarmupSeconds + scenario.SteadySeconds + 90));
-        using var trace = new TextWriterTraceListener(new StreamWriter(Path.Combine(reportDirectory, $"performance-{scenario.Label}.log"), append: false));
+        using var trace = new TextWriterTraceListener(new StreamWriter(Path.Combine(reportDirectory, $"performance-{scenario.Label}.log"), append: false) { AutoFlush = true });
         Trace.Listeners.Add(trace);
         var options = new Dictionary<string, string> { ["ao"] = "null", ["hwdec"] = scenario.Hwdec };
         await using var session = new MpvPlayerSession(options, Environment.GetEnvironmentVariable("MPVSHELL_TEST_NATIVE_LOG_LEVEL") ?? "info");
@@ -367,22 +367,29 @@ public sealed class PlaybackPerformanceTests
 
         public RenderDeviceInfo? DeviceInfo { get; private set; }
 
-        public Task InitializeAsync(CancellationToken cancellationToken) => _worker.InvokeAsync(() =>
+        public async Task InitializeAsync(CancellationToken cancellationToken)
         {
-            _device = new D3D11DeviceManager();
-            _device.Initialize();
-            _angle = new AngleContext(_device.GetDevicePointer());
-            var format = _scenario.Output == "hdr" ? Format.R10G10B10A2_UNorm : Format.B8G8R8A8_UNorm;
-            _swapChain = new CompositionSwapChain(_device.GetFactory(), _device.GetDevice(), _scenario.SurfaceWidth, _scenario.SurfaceHeight, format);
-            _angle.ImportBackBuffer(_swapChain.GetBackBuffer());
-            _render = _session.CreateRenderContext(_angle.GetProcAddress, () =>
+            await _worker.InvokeAsync(() =>
             {
-                Interlocked.CompareExchange(ref _wakeTimestamp, Stopwatch.GetTimestamp(), 0);
-                _worker.Wake();
-            });
-            DeviceInfo = new RenderDeviceInfo(_device.AdapterDescription, _device.IsDebugLayerEnabled, _device.IsWarpDevice,
-                _angle.Description, format.ToString(), _scenario.SurfaceWidth, _scenario.SurfaceHeight);
-        }, cancellationToken);
+                _device = new D3D11DeviceManager();
+                _device.Initialize();
+            }, cancellationToken);
+            await _device!.ConfigureDecodingAsync(_session, cancellationToken);
+            await _worker.InvokeAsync(() =>
+            {
+                _angle = new AngleContext(_device.GetDevicePointer());
+                var format = _scenario.Output == "hdr" ? Format.R10G10B10A2_UNorm : Format.B8G8R8A8_UNorm;
+                _swapChain = new CompositionSwapChain(_device.GetFactory(), _device.GetDevice(), _scenario.SurfaceWidth, _scenario.SurfaceHeight, format);
+                _angle.ImportBackBuffer(_swapChain.GetBackBuffer());
+                _render = _session.CreateRenderContext(_angle.GetProcAddress, () =>
+                {
+                    Interlocked.CompareExchange(ref _wakeTimestamp, Stopwatch.GetTimestamp(), 0);
+                    _worker.Wake();
+                });
+                DeviceInfo = new RenderDeviceInfo(_device.AdapterDescription, _device.IsDebugLayerEnabled, _device.IsWarpDevice,
+                    _angle.Description, format.ToString(), _scenario.SurfaceWidth, _scenario.SurfaceHeight);
+            }, cancellationToken);
+        }
 
         public Task BeginWindowAsync(CancellationToken cancellationToken) => _worker.InvokeAsync(() =>
         {
@@ -477,13 +484,18 @@ public sealed class PlaybackPerformanceTests
             {
                 await _worker.InvokeAsync(() =>
                 {
-                    try { _angle?.MakeParkingCurrent(); _render?.Dispose(); }
+                    try { _angle?.MakeParkingCurrent(); }
                     finally
                     {
-                        _render = null;
-                        _angle?.Dispose();
-                        _swapChain?.Dispose();
-                        _device?.Dispose();
+                        // EGL 切换失败也先归还 mpv 租约，不能带着存活的 render context 终止 ANGLE。
+                        try { _render?.Dispose(); }
+                        finally
+                        {
+                            _render = null;
+                            _angle?.Dispose();
+                            _swapChain?.Dispose();
+                            _device?.Dispose();
+                        }
                     }
                 });
             }

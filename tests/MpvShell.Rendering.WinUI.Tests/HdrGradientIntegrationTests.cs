@@ -155,16 +155,23 @@ public sealed class HdrGradientIntegrationTests
 
         public string Adapter { get; private set; } = "未知";
 
-        public Task InitializeAsync(CancellationToken cancellationToken) => _worker.InvokeAsync(() =>
+        public async Task InitializeAsync(CancellationToken cancellationToken)
         {
-            _device = new D3D11DeviceManager();
-            _device.Initialize();
-            _angle = new AngleContext(_device.GetDevicePointer());
-            Adapter = _angle.Description;
-            _swapChain = new CompositionSwapChain(_device.GetFactory(), _device.GetDevice(), Width, Height, _format);
-            _angle.ImportBackBuffer(_swapChain.GetBackBuffer());
-            _render = _session.CreateRenderContext(_angle.GetProcAddress, _worker.Wake);
-        }, cancellationToken);
+            await _worker.InvokeAsync(() =>
+            {
+                _device = new D3D11DeviceManager();
+                _device.Initialize();
+            }, cancellationToken);
+            await _device!.ConfigureDecodingAsync(_session, cancellationToken);
+            await _worker.InvokeAsync(() =>
+            {
+                _angle = new AngleContext(_device.GetDevicePointer());
+                Adapter = _angle.Description;
+                _swapChain = new CompositionSwapChain(_device.GetFactory(), _device.GetDevice(), Width, Height, _format);
+                _angle.ImportBackBuffer(_swapChain.GetBackBuffer());
+                _render = _session.CreateRenderContext(_angle.GetProcAddress, _worker.Wake);
+            }, cancellationToken);
+        }
 
         public async Task<FrameSamples> CaptureAsync(CancellationToken cancellationToken)
         {

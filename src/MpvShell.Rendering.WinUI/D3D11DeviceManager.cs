@@ -5,6 +5,7 @@ using System.Diagnostics;
 using Vortice.Direct3D;
 using Vortice.Direct3D11;
 using Vortice.DXGI;
+using MpvShell.Player.LibMpv;
 
 namespace MpvShell.Rendering.WinUI;
 
@@ -86,6 +87,7 @@ internal sealed class D3D11DeviceManager : IDisposable
 
         var description = _adapter.Description;
         AdapterDescription = description.Description;
+        RequiresHevcSoftwareDecoding = IsLegacyIntelHevcDevice(description.VendorId, description.DeviceId);
         IsWarpDevice = hardwareResult.Failure;
         Trace.WriteLine($"[D3D11DeviceManager] D3D11 已初始化；设备 {description.Description}；" +
             $"Vendor=0x{description.VendorId:X4} Device=0x{description.DeviceId:X4}；" +
@@ -102,6 +104,17 @@ internal sealed class D3D11DeviceManager : IDisposable
 
     /// <summary>DXGI 适配器描述，例如显卡型号；初始化前为 null。</summary>
     public string? AdapterDescription { get; private set; }
+
+    internal bool RequiresHevcSoftwareDecoding { get; private set; }
+
+    // Haswell 的旧 Intel 驱动会报告 HEVC 能力，但本机 4K HEVC 已在驱动中崩溃/挂起。
+    // 只限制该系列的 HEVC；H.264 继续使用同设备的 D3D11 EGL GPU 纹理路径。
+    internal static bool IsLegacyIntelHevcDevice(uint vendorId, uint deviceId) =>
+        vendorId == 0x8086 && (deviceId & 0xFF00) is 0x0400 or 0x0A00 or 0x0D00;
+
+    // 必须由渲染调度之外的异步调用方等待，普通 mpv 命令仍在其事件线程执行。
+    internal ValueTask ConfigureDecodingAsync(MpvPlayerSession session, CancellationToken cancellationToken) =>
+        RequiresHevcSoftwareDecoding ? session.DisableHevcHardwareDecodingAsync(cancellationToken) : ValueTask.CompletedTask;
 
     /// <summary>仅 Debug 构建使用：MPVSHELL_D3D11_DEBUG_LAYER 为 0/no/false/off 时不请求调试层。</summary>
     internal static bool IsDebugLayerRequested(string? environmentValue) =>

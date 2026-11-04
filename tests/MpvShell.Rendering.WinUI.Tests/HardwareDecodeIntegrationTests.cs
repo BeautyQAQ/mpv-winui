@@ -23,16 +23,22 @@ public sealed class HardwareDecodeIntegrationTests
     public Task Hevc_main10_should_render_4k_frames_using_gpu_resident_d3d11_decoding() =>
         VerifyMediaAsync("MPVSHELL_TEST_HEVC_MEDIA", "hevc", requireHardware: true);
 
+    [HardwareMediaFact("MPVSHELL_TEST_HEVC_FALLBACK_MEDIA")]
+    [Trait("Category", "HardwareMedia")]
+    public Task Hevc_main10_should_render_4k_frames_using_explicit_software_fallback() =>
+        VerifyMediaAsync("MPVSHELL_TEST_HEVC_FALLBACK_MEDIA", "hevc", requireHardware: false, requireSoftware: true);
+
     [HardwareMediaFact("MPVSHELL_TEST_AV1_MEDIA")]
     [Trait("Category", "HardwareMedia")]
     public Task Av1_should_render_4k_frames_and_report_actual_hardware_or_software_fallback() =>
         VerifyMediaAsync("MPVSHELL_TEST_AV1_MEDIA", "av1", requireHardware: false);
 
-    private static async Task VerifyMediaAsync(string mediaVariable, string codec, bool requireHardware)
+    private static async Task VerifyMediaAsync(string mediaVariable, string codec, bool requireHardware, bool requireSoftware = false)
     {
         var path = Environment.GetEnvironmentVariable(mediaVariable)!;
         File.Exists(path).Should().BeTrue($"{mediaVariable} 必须指向存在的固定 4K 非全黑测试素材");
         var report = new HardwareMediaReport { Codec = codec, MediaFile = Path.GetFileName(path) };
+        var reportName = requireSoftware ? $"{codec}-software-fallback" : codec;
         using (var file = File.OpenRead(path)) report.MediaSha256 = Convert.ToHexString(SHA256.HashData(file));
         var nativePath = Path.Combine(AppContext.BaseDirectory, "runtimes", "win-x64", "native", "libmpv-2.dll");
         using (var file = File.OpenRead(nativePath)) report.MpvSha256 = Convert.ToHexString(SHA256.HashData(file));
@@ -43,7 +49,7 @@ public sealed class HardwareDecodeIntegrationTests
         var reportDirectory = Environment.GetEnvironmentVariable("MPVSHELL_TEST_HARDWARE_REPORT_DIR") ??
             Path.Combine(AppContext.BaseDirectory, "hardware-reports");
         Directory.CreateDirectory(reportDirectory);
-        using var trace = new TextWriterTraceListener(new StreamWriter(Path.Combine(reportDirectory, $"{codec}-native.log"), append: false));
+        using var trace = new TextWriterTraceListener(new StreamWriter(Path.Combine(reportDirectory, $"{reportName}-native.log"), append: false));
         Trace.Listeners.Add(trace);
         await using var session = new MpvPlayerSession(new Dictionary<string, string> { ["ao"] = "null" },
             Environment.GetEnvironmentVariable("MPVSHELL_TEST_NATIVE_LOG_LEVEL") ?? "info");
@@ -94,6 +100,12 @@ public sealed class HardwareDecodeIntegrationTests
                 report.HardwareVerified.Should().BeTrue("HEVC Main10 验收必须实际使用 D3D11 EGL GPU 纹理传递");
                 info.DecodeDiagnostics.HardwarePixelFormat.Should().Be("p010");
             }
+            else if (requireSoftware)
+            {
+                info.BitDepth.Should().Be("10 bit", "回退场景仍使用原有 HEVC Main10 素材");
+                report.SoftwareFallback.Should().BeTrue("旧设备兼容场景必须明确报告软件解码");
+                report.HardwareVerified.Should().BeFalse();
+            }
             else
             {
                 (report.HardwareVerified || report.SoftwareFallback).Should().BeTrue("无 AV1 硬解能力的设备必须明确回退软件解码");
@@ -116,7 +128,7 @@ public sealed class HardwareDecodeIntegrationTests
             report.CpuSeconds = (process.TotalProcessorTime - initialCpu).TotalSeconds;
             report.WorkingSetBytes = process.WorkingSet64;
             var options = new JsonSerializerOptions { WriteIndented = true, Converters = { new JsonStringEnumConverter() } };
-            await File.WriteAllTextAsync(Path.Combine(reportDirectory, $"{codec}-hardware-report.json"), JsonSerializer.Serialize(report, options));
+            await File.WriteAllTextAsync(Path.Combine(reportDirectory, $"{reportName}-hardware-report.json"), JsonSerializer.Serialize(report, options));
             trace.Flush();
             Trace.Listeners.Remove(trace);
             cancellation.Cancel();
@@ -172,25 +184,32 @@ public sealed class HardwareDecodeIntegrationTests
 
         public string Adapter { get; private set; } = "未知";
 
-        public Task InitializeAsync(CancellationToken cancellationToken) => _worker.InvokeAsync(() =>
+        public async Task InitializeAsync(CancellationToken cancellationToken)
         {
-            _device = new D3D11DeviceManager();
-            _device.Initialize();
-            _angle = new AngleContext(_device.GetDevicePointer());
-            Adapter = _angle.Description;
-            var getDisplay = Marshal.GetDelegateForFunctionPointer<GetCurrentDisplay>(_angle.GetProcAddress("eglGetCurrentDisplay"));
-            var clientExtensions = Marshal.PtrToStringUTF8(AngleNative.QueryString(0, AngleNative.Extensions)) ?? "";
-            var displayExtensions = Marshal.PtrToStringUTF8(AngleNative.QueryString(getDisplay(), AngleNative.Extensions)) ?? "";
-            var glExtensions = Marshal.PtrToStringUTF8(AngleNative.GlGetString(0x1F03)) ?? "";
-            Trace.WriteLine($"[硬解探测] client device_query={clientExtensions.Contains("EGL_EXT_device_query", StringComparison.Ordinal)}; " +
-                $"display device_query={displayExtensions.Contains("EGL_EXT_device_query", StringComparison.Ordinal)}; " +
-                $"EGLStream={displayExtensions.Contains("EGL_ANGLE_stream_producer_d3d_texture", StringComparison.Ordinal)}; " +
-                $"share_handle={displayExtensions.Contains("EGL_ANGLE_d3d_share_handle_client_buffer", StringComparison.Ordinal)}; " +
-                $"external_essl3={glExtensions.Contains("GL_OES_EGL_image_external_essl3", StringComparison.Ordinal)}");
-            _swapChain = new CompositionSwapChain(_device.GetFactory(), _device.GetDevice(), 3840, 2160, Format.B8G8R8A8_UNorm);
-            _angle.ImportBackBuffer(_swapChain.GetBackBuffer());
-            _render = _session.CreateRenderContext(_angle.GetProcAddress, _worker.Wake);
-        }, cancellationToken);
+            await _worker.InvokeAsync(() =>
+            {
+                _device = new D3D11DeviceManager();
+                _device.Initialize();
+            }, cancellationToken);
+            await _device!.ConfigureDecodingAsync(_session, cancellationToken);
+            await _worker.InvokeAsync(() =>
+            {
+                _angle = new AngleContext(_device.GetDevicePointer());
+                Adapter = _angle.Description;
+                var getDisplay = Marshal.GetDelegateForFunctionPointer<GetCurrentDisplay>(_angle.GetProcAddress("eglGetCurrentDisplay"));
+                var clientExtensions = Marshal.PtrToStringUTF8(AngleNative.QueryString(0, AngleNative.Extensions)) ?? "";
+                var displayExtensions = Marshal.PtrToStringUTF8(AngleNative.QueryString(getDisplay(), AngleNative.Extensions)) ?? "";
+                var glExtensions = Marshal.PtrToStringUTF8(AngleNative.GlGetString(0x1F03)) ?? "";
+                Trace.WriteLine($"[硬解探测] client device_query={clientExtensions.Contains("EGL_EXT_device_query", StringComparison.Ordinal)}; " +
+                    $"display device_query={displayExtensions.Contains("EGL_EXT_device_query", StringComparison.Ordinal)}; " +
+                    $"EGLStream={displayExtensions.Contains("EGL_ANGLE_stream_producer_d3d_texture", StringComparison.Ordinal)}; " +
+                    $"share_handle={displayExtensions.Contains("EGL_ANGLE_d3d_share_handle_client_buffer", StringComparison.Ordinal)}; " +
+                    $"external_essl3={glExtensions.Contains("GL_OES_EGL_image_external_essl3", StringComparison.Ordinal)}");
+                _swapChain = new CompositionSwapChain(_device.GetFactory(), _device.GetDevice(), 3840, 2160, Format.B8G8R8A8_UNorm);
+                _angle.ImportBackBuffer(_swapChain.GetBackBuffer());
+                _render = _session.CreateRenderContext(_angle.GetProcAddress, _worker.Wake);
+            }, cancellationToken);
+        }
 
         public Task<int> WaitForFramesAsync(CancellationToken cancellationToken) => _framesReady.Task.WaitAsync(cancellationToken);
 

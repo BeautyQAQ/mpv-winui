@@ -7,6 +7,20 @@ namespace MpvShell.Player.LibMpv.Tests;
 public sealed class MpvPlayerSessionTests
 {
     [Fact]
+    public async Task Hevc_compatibility_policy_should_preserve_other_hardware_codecs_and_be_repeatable()
+    {
+        await using var session = new MpvPlayerSession(new Dictionary<string, string> { ["ao"] = "null" });
+        await session.InitializeAsync(CancellationToken.None);
+        var before = ((string)(await session.GetPropertyAsync("options/hwdec-codecs", CancellationToken.None))!).Split(',');
+        before.Should().Contain("hevc").And.Contain("h264");
+        await session.DisableHevcHardwareDecodingAsync(CancellationToken.None);
+        await session.DisableHevcHardwareDecodingAsync(CancellationToken.None);
+        ((string)(await session.GetPropertyAsync("options/hwdec-codecs", CancellationToken.None))!).Split(',').Should()
+            .BeEquivalentTo(before.Where(codec => !Equals(codec, "hevc")));
+        (await session.GetPropertyAsync("options/hwdec", CancellationToken.None)).Should().BeEquivalentTo(new[] { "d3d11va" });
+    }
+
+    [Fact]
     public async Task Native_session_should_configure_direct_hardware_policy_and_switch_color_targets()
     {
         await using var session = new MpvPlayerSession(new Dictionary<string, string> { ["ao"] = "null" });

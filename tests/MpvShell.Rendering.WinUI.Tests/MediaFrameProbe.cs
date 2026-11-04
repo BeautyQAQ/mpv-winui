@@ -26,16 +26,23 @@ internal sealed class MediaFrameProbe : IAsyncDisposable
         _worker = new RenderWorker(Render, error => { _failure = error; _capture?.TrySetException(error); });
     }
 
-    internal Task InitializeAsync(CancellationToken token) => _worker.InvokeAsync(() =>
+    internal async Task InitializeAsync(CancellationToken token)
     {
-        _device = new D3D11DeviceManager();
-        _device.Initialize();
-        _angle = new AngleContext(_device.GetDevicePointer());
-        Adapter = _angle.Description;
-        _swapChain = new CompositionSwapChain(_device.GetFactory(), _device.GetDevice(), Width, Height, Format.B8G8R8A8_UNorm);
-        _angle.ImportBackBuffer(_swapChain.GetBackBuffer());
-        _render = _session.CreateRenderContext(_angle.GetProcAddress, _worker.Wake);
-    }, token);
+        await _worker.InvokeAsync(() =>
+        {
+            _device = new D3D11DeviceManager();
+            _device.Initialize();
+        }, token);
+        await _device!.ConfigureDecodingAsync(_session, token);
+        await _worker.InvokeAsync(() =>
+        {
+            _angle = new AngleContext(_device.GetDevicePointer());
+            Adapter = _angle.Description;
+            _swapChain = new CompositionSwapChain(_device.GetFactory(), _device.GetDevice(), Width, Height, Format.B8G8R8A8_UNorm);
+            _angle.ImportBackBuffer(_swapChain.GetBackBuffer());
+            _render = _session.CreateRenderContext(_angle.GetProcAddress, _worker.Wake);
+        }, token);
+    }
 
     internal async Task<byte[]> CaptureAsync(CancellationToken token)
     {

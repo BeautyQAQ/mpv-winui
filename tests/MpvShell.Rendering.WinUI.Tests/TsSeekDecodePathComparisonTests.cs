@@ -19,6 +19,31 @@ namespace MpvShell.Rendering.WinUI.Tests;
 [Collection("HardwareMedia")]
 public sealed class TsSeekDecodePathComparisonTests
 {
+    [HardwareMediaFact("MPVSHELL_TEST_TS_SOFTWARE_MEDIA")]
+    [Trait("Category", "HardwareMedia")]
+    public async Task Software_fallback_should_seek_without_reference_errors_on_legacy_Intel()
+    {
+        var path = Environment.GetEnvironmentVariable("MPVSHELL_TEST_TS_SOFTWARE_MEDIA")!;
+        File.Exists(path).Should().BeTrue("软件回退验收必须使用固定 TS 样片");
+        var targets = (Environment.GetEnvironmentVariable("MPVSHELL_TEST_TS_SEEK_TARGETS") ?? "2,4,7,11,16,21,25,9")
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(text => double.Parse(text, CultureInfo.InvariantCulture)).ToArray();
+        var sequentialSeconds = double.Parse(Environment.GetEnvironmentVariable("MPVSHELL_TEST_TS_SEQUENTIAL_SECONDS") ?? "20", CultureInfo.InvariantCulture);
+        // 仍请求产品默认的 d3d11va，由实际设备兼容策略选择软件解码。
+        var result = await RunVariantAsync(path, "d3d11va", "1", "yes", targets, sequentialSeconds);
+        var directory = Environment.GetEnvironmentVariable("MPVSHELL_TEST_HARDWARE_REPORT_DIR")
+            ?? Path.Combine(AppContext.BaseDirectory, "hardware-reports");
+        Directory.CreateDirectory(directory);
+        await File.WriteAllTextAsync(Path.Combine(directory, "ts-seek-software-fallback.json"),
+            JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true }));
+        result.ActualDecoder.Should().Be("no", "本场景必须实际使用软件回退");
+        result.SequentialErrorGroups.Should().Be(0);
+        result.TotalSeekErrorGroups.Should().Be(0);
+        result.Seeks.Should().HaveCount(targets.Length);
+        foreach (var seek in result.Seeks)
+            seek.RestartPositionSeconds.Should().BeApproximately(seek.Target, 0.1);
+    }
+
     [HardwareMediaFact("MPVSHELL_TEST_TS_MEDIA")]
     [Trait("Category", "HardwareMedia")]
     public async Task Seek_reference_errors_should_be_compared_across_sequential_hardware_and_software_decoding()

@@ -77,7 +77,7 @@ public sealed partial class D3D11VideoSurfaceRenderer : IVideoSurfaceRenderer
             try
             {
                 await _session.ConfigureVideoOutputAsync(MpvVideoOutputMode.Sdr, 203, cancellationToken).ConfigureAwait(false);
-                await _worker.InvokeAsync(() => CreateGraphics(GetRequestedSize()), cancellationToken).ConfigureAwait(false);
+                await CreateGraphicsAsync(GetRequestedSize(), cancellationToken).ConfigureAwait(false);
             }
             catch
             {
@@ -112,10 +112,12 @@ public sealed partial class D3D11VideoSurfaceRenderer : IVideoSurfaceRenderer
             }).ConfigureAwait(false);
 
             nint swapChainPointer = 0;
+            var createGraphics = false;
+            await worker.InvokeAsync(() => createGraphics = _swapChain is null, cancellationToken).ConfigureAwait(false);
+            if (createGraphics) await CreateGraphicsAsync(GetRequestedSize(), cancellationToken).ConfigureAwait(false);
             await worker.InvokeAsync(() =>
             {
-                if (_swapChain is null) CreateGraphics(GetRequestedSize());
-                else ResizeGraphics(GetRequestedSize());
+                ResizeGraphics(GetRequestedSize());
                 swapChainPointer = _swapChain!.NativePointer;
             }, cancellationToken).ConfigureAwait(false);
 
@@ -323,16 +325,35 @@ public sealed partial class D3D11VideoSurfaceRenderer : IVideoSurfaceRenderer
         }
     }
 
+    private async Task CreateGraphicsAsync(VideoSurfaceSize size, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _worker!.InvokeAsync(() =>
+            {
+#if DEBUG
+                _testBeforeCreate?.Invoke();
+#endif
+                _deviceManager = new D3D11DeviceManager();
+                _deviceManager.Initialize();
+            }, cancellationToken).ConfigureAwait(false);
+            // 在创建 render context 前完成策略，避免已排队的媒体抢先启动旧驱动解码。
+            await _deviceManager!.ConfigureDecodingAsync(_session!, cancellationToken).ConfigureAwait(false);
+            await _worker.InvokeAsync(() => CreateGraphics(size), cancellationToken).ConfigureAwait(false);
+        }
+        catch
+        {
+            await _worker!.InvokeAsync(ReleaseGraphics).ConfigureAwait(false);
+            throw;
+        }
+    }
+
     private void CreateGraphics(VideoSurfaceSize size)
     {
         try
         {
-#if DEBUG
-            _testBeforeCreate?.Invoke();
-#endif
-            _deviceManager = new D3D11DeviceManager();
-            _deviceManager.Initialize();
-            _angle = new AngleContext(_deviceManager.GetDevicePointer());
+            var device = _deviceManager ?? throw new InvalidOperationException("图形设备尚未初始化。");
+            _angle = new AngleContext(device.GetDevicePointer());
             _swapChain = new CompositionSwapChain(_deviceManager.GetFactory(), _deviceManager.GetDevice(),
                 size.PhysicalWidth, size.PhysicalHeight, _activeOutput.Format);
             _swapChain.SetColorSpace(_activeOutput.ColorSpace);
@@ -606,9 +627,9 @@ public sealed partial class D3D11VideoSurfaceRenderer : IVideoSurfaceRenderer
         {
             ReleaseGraphics();
             _activeOutput = output;
-            CreateGraphics(GetRequestedSize());
-            pointer = _swapChain!.NativePointer;
         }).ConfigureAwait(false);
+        await CreateGraphicsAsync(GetRequestedSize(), CancellationToken.None).ConfigureAwait(false);
+        await _worker.InvokeAsync(() => pointer = _swapChain!.NativePointer).ConfigureAwait(false);
         await OnUiAsync(dispatcher, () => SetSwapChain(surface, pointer)).ConfigureAwait(false);
     }
 

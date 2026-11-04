@@ -2,7 +2,7 @@
 
 Windows x64 的 WinUI 3 播放器，使用进程内 libmpv 和 ANGLE/D3D11，把视频直接渲染到 `SwapChainPanel`。
 
-**当前阶段：Phase 3 已开始，P3-00 当前版本基线与候选包待验证（2026-10-28）。** 本轮两配置默认回归各 525 通过、0 失败、9 跳过，构建均 0 警告/错误；显式回归各记录 529 项通过后发生原生 `0xC0000005`，整轮失败。新候选目录已生成，但 GUI 工具无法绑定窗口，画面、控制及正常退出流程未验证。范围与证据见 [Phase 3 计划](docs/implementation/phase-3-plan.md)、[当前进度](docs/implementation/phase-3-progress.md) 和 [P3-00 记录](docs/implementation/evidence/P3-00-01-baseline-and-candidate.md)。Phase 2 已于 2026-10-18 在声明范围内通过，其历史结果不代替本轮机器验证；PERF-02 和额外硬件/长期验证独立保留。
+**当前阶段：Phase 3 进行中，940M / Intel HD 4600 本机兼容验收已通过（2026-11-04）。** 当前源码为 Haswell 的 HEVC 启用软件回退，两配置兼容回归各 547 通过、0 失败、2 项硬解前提不适用，应用恢复及自然播放通过；Computer Use GUI 已补齐，三轮正常退出。H.264 1080p30 / 720p60 稳态分别约 29.99 / 60.00 fps，均无解码或呈现丢帧；1080p60 补测存在少量丢帧，保留限制。用户确认本设备不要求 HEVC 硬解或软件 4K60 性能，本机旧故障跟进据此完成。详见 [GUI 与 H.264 验收](docs/implementation/evidence/P3-00-06-940m-gui-and-h264-acceptance.md) 和 [当前进度](docs/implementation/phase-3-progress.md)。旧候选不含修复，P3-00 候选更新与最终目录工作仍待完成；GTX 1060 / UU 及既有阶段结果保留原范围。
 
 当前源码支持本地文件、HTTP/HTTPS 直链、基础 HLS、播放/暂停、停止后重播、0.25～4× 倍速、精确跳转、时间轴数字预览、画面拖动跳转/调音量及反馈、音量/静音、轨道选择、媒体信息、全屏和最近打开持久化。停止会卸载媒体并清空进度与媒体信息，保留地址供重播；倍速在本次运行中跨停止、换片和 EOF 保留。视频根据片源与 Windows HDR 状态使用 PQ 10-bit 输出或 SDR 色调映射；优先 D3D11VA，经 ANGLE 直接传递 GPU 帧，不可用时回退软件解码。最近打开保留最新 10 条，成功打开后保存到用户本地目录，提供清空入口。停止、倍速、最近打开持久化和时间轴/手势改进属于 Phase 2 源码改动，现有 Phase 1 发布包不包含这些功能。
 
@@ -10,7 +10,7 @@ Windows x64 的 WinUI 3 播放器，使用进程内 libmpv 和 ANGLE/D3D11，把
 
 P2-05 已修复代码审查发现的慢启动加载关闭等待链，4 个真实应用生命周期探针通过。该次 Debug/Release 构建均 0 警告/错误，默认回归各 525 通过、0 失败、9 跳过，显式素材全量各 534 通过、0 失败、0 跳过，四轮均首次通过；148 项构建输入全部一致。最终 Release 完整 GUI 流程与两次正常退出通过，重启恢复最近记录且不自动播放，验收后已按原字节恢复历史。历史证据见 [P2-05 记录](docs/implementation/evidence/P2-05-01-phase-2-acceptance.md)；P2-05 当时未生成新发布包。
 
-上一工作包 P2-04 的最终 Debug/Release 构建均 0 警告、0 错误，Debug 默认及 Release 全量复验各 525 通过、0 失败、9 跳过。首轮 Release 为 524 通过、1 失败、9 跳过，既有渲染连续性零丢帧断言实际观察到 2 帧；未改代码或断言，同一二进制单项和全量复验随后通过，首次失败及未证实根因保留。真实 Release 已验证最小窗口、轨道/字幕、全屏/Esc、EOF/重播、焦点/自动隐藏、停止、输入校验错误及正常退出，见 [P2-04 记录](docs/implementation/evidence/P2-04-01-player-interface.md)。[P2-03](docs/implementation/evidence/P2-03-01-timeline-and-gesture-feedback.md) 的两配置默认各 478 通过、[P2-02](docs/implementation/evidence/P2-02-01-recent-history.md) 的各 411 通过、P2-01 显式各 359 项及 Phase 1 包的显式各 307 项均保留各自源码身份。功能测试不代表性能通过，PERF-02 仍需跟进。
+上一工作包 P2-04 的最终 Debug/Release 构建均 0 警告、0 错误，Debug 默认及 Release 全量复验各 525 通过、0 失败、9 跳过。首轮 Release 为 524 通过、1 失败、9 跳过，既有渲染连续性零丢帧断言实际观察到 2 帧；未改代码或断言，同一二进制单项和全量复验随后通过，首次失败及未证实根因保留。真实 Release 已验证最小窗口、轨道/字幕、全屏/Esc、EOF/重播、焦点/自动隐藏、停止、输入校验错误及正常退出，见 [P2-04 记录](docs/implementation/evidence/P2-04-01-player-interface.md)。[P2-03](docs/implementation/evidence/P2-03-01-timeline-and-gesture-feedback.md) 的两配置默认各 478 通过、[P2-02](docs/implementation/evidence/P2-02-01-recent-history.md) 的各 411 通过、P2-01 显式各 359 项及 Phase 1 包的显式各 307 项均保留各自源码身份。功能测试不代表性能通过；GTX 1060 / UU 的 P3-01 / PERF-02 本机调查已于 11 月 3 日获用户接受，940M / Intel 故障按当前进度独立跟进。
 
 ## 构建与运行
 
@@ -30,7 +30,7 @@ dotnet test mpv-winui.slnx -p:Platform=x64 --no-build --no-restore
 
 ## 当前测试包与发布
 
-**[当前候选测试包（约 135 MB，待验证）](artifacts/candidates/MpvShell-phase3-candidate-20261028-121903-72991b.zip)** 已封包，694 个 ZIP 条目逐项核验，另有 288 文件源码快照；精确哈希见 [候选及历史通过包入口](docs/implementation/release-status.md)。当前候选包含 Phase 2 功能，但显式回归原生崩溃、最终目录 GUI 未验证，包内附基线结果和待验清单。历史 Phase 1 包于 2026-10-18 通过当时范围内验收，本次检出缺少其 ZIP，不能把旧证据写成本轮核验。此前 GTX/RTX 包及用户复测继续保留各自身份。
+**当前候选为 `MpvShell-phase3-candidate-20261103-170050-5f9ed2`（约 135 MB，整体待验证）**，入口及精确哈希见 [候选及历史通过包](docs/implementation/release-status.md)。它包含 Phase 2 功能，693 个 ZIP 文件条目及 290 文件源码快照已核验，GTX 1060 / UU 的最终目录六项 GUI 和完整回归已通过。11 月 4 日的旧 Intel HEVC 兼容修复仅在当前源码及本机构建中，尚未生成包含修复的新候选；10 月 28 日和 11 月 3 日的封包均保持原身份。ZIP 不随 Git 同步，不能将本机缺席的包写成已重新核验。历史 Phase 1 通过包及此前 GTX/RTX 用户复测继续保留各自身份。
 
 生成新的独立测试包（PowerShell 7，仓库根目录）：
 
@@ -59,4 +59,4 @@ pwsh -File build/testing/seal-candidate-package.ps1 -PackageDirectory <返回的
 - [架构与原始验收要求](docs/architecture.md)
 - [HTTP 与应用恢复测试工具](build/testing/README.md)
 
-应用默认诊断日志位于 `%LOCALAPPDATA%\MpvShell\logs`，原生媒体日志对网络地址脱敏，测试素材不随 Git 提交。尚未验收的跨屏、长期稳定性、真实触屏及其他 DPI 等范围见 [Phase 3 进度](docs/implementation/phase-3-progress.md#4-独立跟进与未验证范围)；“最近打开”保存于 `%LOCALAPPDATA%\MpvShell\recent-history.json`，历史功能验收见 [持久化记录](docs/implementation/evidence/P2-02-01-recent-history.md)。当前候选的 GUI/正常退出仍待验证，历史通过包仍为 Phase 1。
+应用默认诊断日志位于 `%LOCALAPPDATA%\MpvShell\logs`，原生媒体日志对网络地址脱敏，测试素材不随 Git 提交。尚未验收的跨屏、长期稳定性、真实触屏及其他 DPI 等范围见 [Phase 3 进度](docs/implementation/phase-3-progress.md#4-独立跟进与未验证范围)；“最近打开”保存于 `%LOCALAPPDATA%\MpvShell\recent-history.json`，历史功能验收见 [持久化记录](docs/implementation/evidence/P2-02-01-recent-history.md)。当前候选的 GTX 1060 / UU GUI 和正常退出已验，940M / Intel 当前源码的本机兼容验收也已完成；包含修复的新候选独立待更新，历史通过包仍为 Phase 1。

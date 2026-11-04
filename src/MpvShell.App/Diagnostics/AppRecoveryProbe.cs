@@ -553,7 +553,8 @@ internal sealed class AppRecoveryProbe
         report["PlaybackSamples"] = samples;
         var previous = initial;
         var changedFrames = 0;
-        var nextSampleAt = Math.Max(5, vm.State.PositionSeconds + 5);
+        var sampleInterval = PlaybackProbeSampling.GetInterval(duration, vm.State.PositionSeconds);
+        var nextSampleAt = vm.State.PositionSeconds + sampleInterval;
         var clock = Stopwatch.StartNew();
         // 从此刻起的呈现统计与 mpv 计数只描述本次带采样的整段播放；无采样对照见 performance 模式。
         await renderer.GetStatisticsAsync(reset: true, CancellationToken.None);
@@ -573,7 +574,7 @@ internal sealed class AppRecoveryProbe
                 samples.Add(new { Position = vm.State.PositionSeconds, PixelChange = change, Frame = frame.Summary,
                     Decode = vm.InfoPanel.DecodeSummary });
                 previous = frame;
-                nextSampleAt += Math.Max(5, duration / 6);
+                nextSampleAt += sampleInterval;
             }
             await Task.Delay(100);
         }
@@ -667,19 +668,26 @@ internal sealed class AppRecoveryProbe
         ["MistimedFrames"] = await CounterAsync(session, "mistimed-frame-count"),
         ["EstimatedVfFps"] = await NumberAsync(session, "estimated-vf-fps"),
         ["ContainerFps"] = await NumberAsync(session, "container-fps"),
-        ["HwdecCurrent"] = await session.GetPropertyAsync("hwdec-current", CancellationToken.None) as string,
+        ["HwdecCurrent"] = await OptionalStringAsync(session, "hwdec-current"),
     };
 
     private static async Task<object?> CounterAsync(MpvPlayerSession session, string property)
     {
         try { return await session.GetPropertyAsync(property, CancellationToken.None) switch { long value => value, int value => (long)value, _ => null }; }
-        catch (MpvException) { return null; }
+        catch (MpvException error) when (error.ErrorCode == -10) { return null; }
     }
 
     private static async Task<object?> NumberAsync(MpvPlayerSession session, string property)
     {
         try { return await session.GetPropertyAsync(property, CancellationToken.None) switch { double value => value, long value => (double)value, _ => null }; }
-        catch (MpvException) { return null; }
+        catch (MpvException error) when (error.ErrorCode == -10) { return null; }
+    }
+
+    private static async Task<string?> OptionalStringAsync(MpvPlayerSession session, string property)
+    {
+        try { return await session.GetPropertyAsync(property, CancellationToken.None) as string; }
+        // EOF 后解码器已经释放，MPV_ERROR_PROPERTY_UNAVAILABLE 属于正常状态。
+        catch (MpvException error) when (error.ErrorCode == -10) { return null; }
     }
 
     private void ReadFrame(D3D11DeviceManager device, CompositionSwapChain swapChain, int generation)
