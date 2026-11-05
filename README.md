@@ -2,7 +2,7 @@
 
 Windows x64 的 WinUI 3 播放器，使用进程内 libmpv 和 ANGLE/D3D11，把视频直接渲染到 `SwapChainPanel`。
 
-**当前阶段：Phase 3 进行中，940M / Intel HD 4600 本机兼容验收已通过（2026-11-04）。** 当前源码为 Haswell 的 HEVC 启用软件回退，两配置兼容回归各 547 通过、0 失败、2 项硬解前提不适用，应用恢复及自然播放通过；Computer Use GUI 已补齐，三轮正常退出。H.264 1080p30 / 720p60 稳态分别约 29.99 / 60.00 fps，均无解码或呈现丢帧；1080p60 补测存在少量丢帧，保留限制。用户确认本设备不要求 HEVC 硬解或软件 4K60 性能，本机旧故障跟进据此完成。详见 [GUI 与 H.264 验收](docs/implementation/evidence/P3-00-06-940m-gui-and-h264-acceptance.md) 和 [当前进度](docs/implementation/phase-3-progress.md)。旧候选不含修复，P3-00 候选更新与最终目录工作仍待完成；GTX 1060 / UU 及既有阶段结果保留原范围。
+**当前阶段：Phase 3 进行中，P3-00 新候选已在 RTX 3070 本轮范围内通过（2026-11-05）。** 新包包含旧 Intel HEVC 兼容修复及已合并的测试工具。两配置显式回归为 Debug 563/0/2、Release 547/0/2，实际候选 DLL 为 547/0/2；两项跳过均为旧 Intel 专用场景在本机不适用，严格 runner 与首轮配置失败原始结果保留。连续短测、最终目录 GUI、两次正常退出/重启恢复及封包核验完成，见 [本轮验收](docs/implementation/evidence/P3-00-07-current-candidate-20261105.md)。P3-02 两小时长测及资源趋势仍暂缓，P3-03 最终阶段验收未完成。
 
 当前源码支持本地文件、HTTP/HTTPS 直链、基础 HLS、播放/暂停、停止后重播、0.25～4× 倍速、精确跳转、时间轴数字预览、画面拖动跳转/调音量及反馈、音量/静音、轨道选择、媒体信息、全屏和最近打开持久化。停止会卸载媒体并清空进度与媒体信息，保留地址供重播；倍速在本次运行中跨停止、换片和 EOF 保留。视频根据片源与 Windows HDR 状态使用 PQ 10-bit 输出或 SDR 色调映射；优先 D3D11VA，经 ANGLE 直接传递 GPU 帧，不可用时回退软件解码。最近打开保留最新 10 条，成功打开后保存到用户本地目录，提供清空入口。停止、倍速、最近打开持久化和时间轴/手势改进属于 Phase 2 源码改动，现有 Phase 1 发布包不包含这些功能。
 
@@ -12,7 +12,7 @@ P2-05 已修复代码审查发现的慢启动加载关闭等待链，4 个真实
 
 上一工作包 P2-04 的最终 Debug/Release 构建均 0 警告、0 错误，Debug 默认及 Release 全量复验各 525 通过、0 失败、9 跳过。首轮 Release 为 524 通过、1 失败、9 跳过，既有渲染连续性零丢帧断言实际观察到 2 帧；未改代码或断言，同一二进制单项和全量复验随后通过，首次失败及未证实根因保留。真实 Release 已验证最小窗口、轨道/字幕、全屏/Esc、EOF/重播、焦点/自动隐藏、停止、输入校验错误及正常退出，见 [P2-04 记录](docs/implementation/evidence/P2-04-01-player-interface.md)。[P2-03](docs/implementation/evidence/P2-03-01-timeline-and-gesture-feedback.md) 的两配置默认各 478 通过、[P2-02](docs/implementation/evidence/P2-02-01-recent-history.md) 的各 411 通过、P2-01 显式各 359 项及 Phase 1 包的显式各 307 项均保留各自源码身份。功能测试不代表性能通过；GTX 1060 / UU 的 P3-01 / PERF-02 本机调查已于 11 月 3 日获用户接受，940M / Intel 本机兼容验收已于 11 月 4 日收口，设备限制见当前进度。
 
-2026-11-05 同步时补回本地未提交的 [RTX 3070 复测](docs/implementation/evidence/P3-00-02-rtx3070-retest.md)及 [P3-02 连续短测](docs/implementation/evidence/P3-02-01-continuous-short-test.md)记录和测试工具。P3-02 已进行有限连续测试，不能列为未开始；两小时长测与资源趋势仍按用户要求暂缓。10 月 29 日结果只对应当时源码和候选，不替代当前合并版本验收。
+2026-11-05 同步时补回本地未提交的 [RTX 3070 复测](docs/implementation/evidence/P3-00-02-rtx3070-retest.md)及 [P3-02 连续短测](docs/implementation/evidence/P3-02-01-continuous-short-test.md)记录和测试工具。相关源码已提交为 `28ffe46`，本轮有限连续测试已复验通过；两小时长测与资源趋势仍按用户要求暂缓。10 月 29 日结果只对应当时源码和候选，不替代当前合并版本验收。
 
 ## 构建与运行
 
@@ -32,12 +32,12 @@ dotnet test mpv-winui.slnx -p:Platform=x64 --no-build --no-restore
 
 ## 当前测试包与发布
 
-**当前候选为 `MpvShell-phase3-candidate-20261103-170050-5f9ed2`（约 135 MB，整体待验证）**，入口及精确哈希见 [候选及历史通过包](docs/implementation/release-status.md)。它包含 Phase 2 功能，693 个 ZIP 文件条目及 290 文件源码快照已核验，GTX 1060 / UU 的最终目录六项 GUI 和完整回归已通过。11 月 4 日的旧 Intel HEVC 兼容修复仅在当前源码及本机构建中，尚未生成包含修复的新候选；10 月 28 日和 11 月 3 日的封包均保持原身份。ZIP 不随 Git 同步，不能将本机缺席的包写成已重新核验。历史 Phase 1 通过包及此前 GTX/RTX 用户复测继续保留各自身份。
+**[下载当前候选测试包](artifacts/candidates/MpvShell-phase3-candidate-20261105-193728-2dc25a.zip)**（约 135 MB，本轮 RTX 3070 范围通过），另有 [303 文件源码快照](artifacts/candidates/MpvShell-phase3-candidate-20261105-193728-2dc25a-source.zip)。新包来自干净 `28ffe46`，包含 Phase 2 功能和 11 月 4 日兼容修复；692 个 ZIP 文件逐项核验通过，来源、哈希和范围见 [发布入口](docs/implementation/release-status.md)。本机运行日志在包外，后补验收文档不在冻结源码快照中。ZIP 不随 Git 同步。
 
 生成新的独立测试包（PowerShell 7，仓库根目录）：
 
 ```powershell
-pwsh -File build/testing/publish-candidate.ps1 -HdrMediaDirectory artifacts/p3-00/media-hdr -P104MediaDirectory artifacts/p3-00/media-p1-04 -PackageLabel phase3-candidate -PackageDate 20261028
+pwsh -File build/testing/publish-candidate.ps1 -HdrMediaDirectory artifacts/p3-00-retest-20261029/media-hdr -P104MediaDirectory artifacts/p3-00-retest-20261029/media-p1-04 -PackageLabel phase3-candidate
 # 记录最终目录运行结果，将本机日志移到包外后核验内容并封包：
 pwsh -File build/testing/seal-candidate-package.ps1 -PackageDirectory <返回的目录>
 ```

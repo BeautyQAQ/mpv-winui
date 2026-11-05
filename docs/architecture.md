@@ -4,7 +4,7 @@
 > 版本：1.1
 > 更新日期：2026-08-27
 
-> 实施状态（2026-11-05 同步）：Phase 0～Phase 2 已在各自声明范围内通过，见 [Phase 1 验收](implementation/evidence/P1-05-01-release-and-phase-1-acceptance.md)与 [Phase 2 验收](implementation/evidence/P2-05-01-phase-2-acceptance.md)。Phase 3 进行中；GTX 1060 / UU 性能调查和 HD 4600 本机兼容验收已收口，P3-02 有限连续短测通过、两小时长测及资源趋势按用户要求暂缓。当前仍需包含最新修复的候选和最终目录验收，详细范围见 [Phase 3 进度](implementation/phase-3-progress.md)，产物见 [发布入口](implementation/release-status.md)。第 14～15 节保留原阶段范围与验收要求，Phase 0 实际范围裁定见 [P0-11 验收](implementation/evidence/P0-11-01-phase-0-acceptance.md)。
+> 实施状态（2026-11-05 同步）：Phase 0～Phase 2 已在各自声明范围内通过，见 [Phase 1 验收](implementation/evidence/P1-05-01-release-and-phase-1-acceptance.md)与 [Phase 2 验收](implementation/evidence/P2-05-01-phase-2-acceptance.md)。Phase 3 进行中；GTX 1060 / UU 性能调查和 HD 4600 本机兼容验收已收口，P3-02 有限连续短测通过、两小时长测及资源趋势按用户要求暂缓。包含最新修复的候选已于 11 月 5 日在 RTX 3070 完成最终目录验收，详细范围见 [Phase 3 进度](implementation/phase-3-progress.md)，产物见 [发布入口](implementation/release-status.md)。第 14～15 节保留原阶段范围与验收要求，Phase 0 实际范围裁定见 [P0-11 验收](implementation/evidence/P0-11-01-phase-0-acceptance.md)。
 
 ## 1. 决策摘要
 
