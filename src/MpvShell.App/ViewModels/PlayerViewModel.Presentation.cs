@@ -36,6 +36,10 @@ public partial class PlayerViewModel
     public Visibility StatusProgressVisibility => IsStatusBusy ? Visibility.Visible : Visibility.Collapsed;
     public Visibility WelcomeVisibility => State.CurrentOverlay == OverlayKind.None && string.IsNullOrWhiteSpace(State.CurrentUrl) && CurrentStatus == PlayerStatus.None
         ? Visibility.Visible : Visibility.Collapsed;
+    // 空闲画布跟随系统主题；实际视频始终保留独立的黑色底，不受浅色主题影响。
+    public Visibility IdleSurfaceVisibility => State.IsStopped ? Visibility.Visible : Visibility.Collapsed;
+    public Visibility TransportVisibility => string.IsNullOrWhiteSpace(State.CurrentUrl) && !IsLoading
+        ? Visibility.Collapsed : ControlsVisibility;
     public string StatusTitle => CurrentStatus switch
     {
         PlayerStatus.Error => HasTerminalFailure ? "播放器暂不可用" : "播放遇到问题",
@@ -134,6 +138,8 @@ public partial class PlayerViewModel
         OnPropertyChanged(nameof(IsStatusBusy));
         OnPropertyChanged(nameof(StatusProgressVisibility));
         OnPropertyChanged(nameof(WelcomeVisibility));
+        OnPropertyChanged(nameof(IdleSurfaceVisibility));
+        OnPropertyChanged(nameof(TransportVisibility));
         OnPropertyChanged(nameof(FeedbackVisibility));
         OnPropertyChanged(nameof(CanTogglePlayback));
         OnPropertyChanged(nameof(CanStopPlayback));

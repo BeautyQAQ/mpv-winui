@@ -4,13 +4,27 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:views="using:MpvShell.App.Views"
     Loaded="OnLoaded" Unloaded="OnUnloaded" PreviewKeyDown="OnPlayerPreviewKeyDown"
-    KeyDown="OnPlayerKeyDown" GotFocus="OnPlayerGotFocus" LostFocus="OnPlayerLostFocus" IsTabStop="True">
+    KeyDown="OnPlayerKeyDown" GotFocus="OnPlayerGotFocus" LostFocus="OnPlayerLostFocus" IsTabStop="True"
+    Language="zh-CN" FontFamily="{ThemeResource ContentControlThemeFontFamily}">
     <Page.Resources>
         <views:RecentSourceDisplayConverter x:Key="RecentSourceDisplay" />
-        <Style x:Key="TransportButton" TargetType="Button">
-            <Setter Property="MinHeight" Value="48" />
-            <Setter Property="MinWidth" Value="48" />
+        <Style x:Key="TransportButton" TargetType="Button" BasedOn="{StaticResource SubtleButtonStyle}">
+            <Setter Property="MinHeight" Value="44" />
+            <Setter Property="MinWidth" Value="44" />
             <Setter Property="Padding" Value="12,8" />
+            <Setter Property="CornerRadius" Value="6" />
+        </Style>
+        <Style x:Key="SurfaceCard" TargetType="Border">
+            <Setter Property="Background" Value="{ThemeResource SolidBackgroundFillColorBaseBrush}" />
+            <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="8" />
+        </Style>
+        <Style x:Key="PanelHeading" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
+            <Setter Property="Margin" Value="0,12,0,0" />
         </Style>
         <Style TargetType="ListViewItem">
             <Setter Property="MinHeight" Value="48" />
@@ -19,26 +33,26 @@
         <DataTemplate x:Key="TrackOptionTemplate">
             <Grid Padding="4,8" ColumnSpacing="10" ToolTipService.ToolTip="{Binding Label}" AutomationProperties.Name="{Binding AccessibleLabel}">
                 <Grid.ColumnDefinitions><ColumnDefinition Width="24" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
-                <TextBlock Text="{Binding SelectionGlyph}" FontFamily="Segoe MDL2 Assets" Foreground="#8DBBFA" VerticalAlignment="Center" />
+                <TextBlock Text="{Binding SelectionGlyph}" FontFamily="{ThemeResource SymbolThemeFontFamily}" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" VerticalAlignment="Center" />
                 <StackPanel Grid.Column="1" Spacing="3">
                     <TextBlock Text="{Binding Label}" TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis" />
-                    <TextBlock Text="{Binding Detail}" Foreground="#AAB5C8" FontSize="12" TextWrapping="Wrap" />
+                    <TextBlock Text="{Binding Detail}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" FontSize="12" TextWrapping="Wrap" />
                 </StackPanel>
             </Grid>
         </DataTemplate>
     </Page.Resources>
-    <Grid x:Name="RootGrid" Background="#080C13" PointerExited="OnRootPointerExited">
+    <Grid x:Name="RootGrid" Background="Black" PointerExited="OnRootPointerExited">
         <VisualStateManager.VisualStateGroups>
             <VisualStateGroup>
                 <VisualState x:Name="CompactTransport">
                     <VisualState.StateTriggers><AdaptiveTrigger MinWindowWidth="0" /></VisualState.StateTriggers>
                 </VisualState>
                 <VisualState x:Name="WideTransport">
-                    <VisualState.StateTriggers><AdaptiveTrigger MinWindowWidth="1100" /></VisualState.StateTriggers>
+                    <VisualState.StateTriggers><AdaptiveTrigger MinWindowWidth="1000" /></VisualState.StateTriggers>
                     <VisualState.Setters>
                         <Setter Target="PrimaryTransportButtons.(Grid.ColumnSpan)" Value="1" />
+                        <Setter Target="PrimaryTransportButtons.(Grid.Column)" Value="1" />
                         <Setter Target="VolumeControls.(Grid.Row)" Value="0" />
-                        <Setter Target="VolumeControls.(Grid.Column)" Value="1" />
                         <Setter Target="SecondaryTransportButtons.(Grid.Row)" Value="0" />
                         <Setter Target="SecondaryTransportButtons.(Grid.Column)" Value="2" />
                         <Setter Target="SecondaryTransportButtons.(Grid.ColumnSpan)" Value="1" />
@@ -47,73 +61,102 @@
             </VisualStateGroup>
         </VisualStateManager.VisualStateGroups>
         <SwapChainPanel x:Name="VideoSurface" IsHitTestVisible="False" SizeChanged="OnVideoSurfaceSizeChanged" />
+        <Border Background="{ThemeResource SolidBackgroundFillColorBaseBrush}" Visibility="{Binding IdleSurfaceVisibility}" IsHitTestVisible="False" />
         <Grid x:Name="InteractionSurface" Background="Transparent"
               PointerPressed="OnVideoPointerPressed" PointerMoved="OnVideoPointerMoved"
               PointerReleased="OnVideoPointerReleased" PointerCanceled="OnVideoPointerCanceled"
               PointerCaptureLost="OnVideoPointerCanceled" DoubleTapped="OnVideoDoubleTapped" />
-        <Grid Margin="16" RowSpacing="12">
+        <Grid Margin="16,8,16,16" RowSpacing="12">
             <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
-            <Border x:Name="HeaderChrome" Padding="14" Background="#E6111827" CornerRadius="12"
+            <Border x:Name="HeaderChrome" Padding="8,4" Style="{StaticResource SurfaceCard}"
                     Visibility="{Binding ControlsVisibility}">
                 <ContentControl x:Name="OpenMediaPanel" IsEnabled="False" HorizontalContentAlignment="Stretch">
-                    <StackPanel Spacing="10">
-                        <Grid ColumnSpacing="12">
-                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                            <TextBlock Text="{Binding MediaTitle}" FontSize="16" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"
-                                       ToolTipService.ToolTip="{Binding MediaTitle}" VerticalAlignment="Center" />
-                            <TextBlock Grid.Column="1" Text="MpvShell" Foreground="#8B9BB4" VerticalAlignment="Center" />
-                        </Grid>
-                        <Grid ColumnSpacing="8">
-                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                            <TextBox x:Name="MediaInput" MinHeight="44" PlaceholderText="文件路径或 HTTP / HTTPS 地址" AutomationProperties.Name="媒体地址"
-                                     Text="{Binding UrlText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" KeyDown="OnMediaInputKeyDown" />
-                            <Button Grid.Column="1" Content="打开地址" Command="{Binding OpenUrlCommand}" Style="{StaticResource TransportButton}" />
-                            <Button Grid.Column="2" Content="打开文件" Click="OnOpenFileClicked" Style="{StaticResource TransportButton}" />
-                        </Grid>
-                    </StackPanel>
+                    <Grid ColumnSpacing="12">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                        <FontIcon Glyph="&#xE714;" FontSize="20" Margin="8,0,0,0" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        <TextBlock Grid.Column="1" Text="{Binding MediaTitle}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"
+                                   ToolTipService.ToolTip="{Binding MediaTitle}" VerticalAlignment="Center" />
+                        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4">
+                            <Button Click="OnOpenFileClicked" Style="{StaticResource TransportButton}" AutomationProperties.Name="打开文件" ToolTipService.ToolTip="打开文件">
+                                <StackPanel Orientation="Horizontal" Spacing="8"><FontIcon Glyph="&#xE8B7;" FontSize="16" /><TextBlock Text="打开文件" /></StackPanel>
+                            </Button>
+                            <Button x:Name="OpenLinkButton" Style="{StaticResource TransportButton}" AutomationProperties.Name="打开链接" ToolTipService.ToolTip="打开链接">
+                                <FontIcon Glyph="&#xE71B;" FontSize="18" />
+                                <Button.Flyout>
+                                    <Flyout x:Name="OpenMediaFlyout" Placement="BottomEdgeAlignedRight" Opened="OnOpenMediaFlyoutOpened" Closed="OnOpenMediaFlyoutClosed">
+                                        <StackPanel Width="360" Spacing="16">
+                                            <TextBlock Text="打开链接" FontSize="20" FontWeight="SemiBold" />
+                                            <TextBox x:Name="MediaInput" Header="媒体地址" PlaceholderText="粘贴 HTTP / HTTPS 地址或文件路径"
+                                                     AutomationProperties.Name="媒体地址" MinHeight="40"
+                                                     Text="{Binding UrlText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" KeyDown="OnMediaInputKeyDown" />
+                                            <Button Content="开始播放" HorizontalAlignment="Right" Click="OnOpenMediaSubmitted" Style="{StaticResource AccentButtonStyle}" MinWidth="100" />
+                                        </StackPanel>
+                                    </Flyout>
+                                </Button.Flyout>
+                            </Button>
+                            <Button x:Name="RecentButton" Command="{Binding ToggleOsdCommand}" Style="{StaticResource TransportButton}" AutomationProperties.Name="最近打开" ToolTipService.ToolTip="最近打开">
+                                <FontIcon Glyph="&#xE81C;" FontSize="18" />
+                            </Button>
+                        </StackPanel>
+                    </Grid>
                 </ContentControl>
             </Border>
             <!-- 中间行跟随实际可用高度；窄窗下浮层自身滚动，不覆盖顶部入口和底部控制。 -->
             <Grid Grid.Row="1">
-                <StackPanel x:Name="WelcomePanel" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="10"
-                            IsHitTestVisible="False" Visibility="{Binding WelcomeVisibility}">
-                    <FontIcon Glyph="&#xE714;" FontSize="40" Foreground="#8DBBFA" />
-                    <TextBlock Text="打开媒体，开始播放" FontSize="24" FontWeight="SemiBold" HorizontalAlignment="Center" />
-                    <TextBlock Text="支持本地文件和网络媒体地址" Foreground="#AAB5C8" HorizontalAlignment="Center" />
+                <StackPanel x:Name="WelcomePanel" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="24"
+                            Visibility="{Binding WelcomeVisibility}">
+                    <Border Width="88" Height="88" CornerRadius="24" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" HorizontalAlignment="Center">
+                        <FontIcon Glyph="&#xE768;" FontSize="32" Margin="4,0,0,0" />
+                    </Border>
+                    <StackPanel Spacing="10">
+                        <TextBlock Text="打开媒体，开始播放" FontSize="28" FontWeight="SemiBold" HorizontalAlignment="Center" />
+                        <TextBlock Text="本地视频、音乐，或你想看的媒体链接。" Foreground="{ThemeResource TextFillColorSecondaryBrush}" HorizontalAlignment="Center" />
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Spacing="12" HorizontalAlignment="Center">
+                        <Button Click="OnOpenFileClicked" Style="{StaticResource AccentButtonStyle}" MinHeight="40" Padding="20,10" AutomationProperties.Name="打开文件" IsEnabled="{Binding IsEnabled, ElementName=OpenMediaPanel}">
+                            <StackPanel Orientation="Horizontal" Spacing="10"><FontIcon Glyph="&#xE8B7;" FontSize="16" /><TextBlock Text="打开文件" /></StackPanel>
+                        </Button>
+                        <Button Click="OnWelcomeOpenLinkClicked" MinHeight="40" Padding="20,10" AutomationProperties.Name="打开链接" IsEnabled="{Binding IsEnabled, ElementName=OpenMediaPanel}">
+                            <StackPanel Orientation="Horizontal" Spacing="10"><FontIcon Glyph="&#xE71B;" FontSize="16" /><TextBlock Text="打开链接" /></StackPanel>
+                        </Button>
+                    </StackPanel>
                 </StackPanel>
                 <Border HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="520" Padding="18,14"
-                        Background="#F0111827" CornerRadius="12" Visibility="{Binding StatusVisibility}">
+                        Style="{StaticResource SurfaceCard}" Visibility="{Binding StatusVisibility}">
                     <ScrollViewer VerticalScrollBarVisibility="Auto">
                         <StackPanel Spacing="8" AutomationProperties.LiveSetting="Polite">
                             <StackPanel Orientation="Horizontal" Spacing="12">
                                 <ProgressRing Width="24" Height="24" IsActive="{Binding IsStatusBusy}" Visibility="{Binding StatusProgressVisibility}" />
                                 <TextBlock Text="{Binding StatusTitle}" FontSize="20" FontWeight="SemiBold" VerticalAlignment="Center" />
                             </StackPanel>
-                            <TextBlock Text="{Binding StatusMessage}" TextWrapping="Wrap" Foreground="#C8D2E3" />
+                            <TextBlock Text="{Binding StatusMessage}" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                         </StackPanel>
                     </ScrollViewer>
                 </Border>
                 <Border HorizontalAlignment="Left" VerticalAlignment="Top" Padding="14,10" MaxWidth="400"
-                        Background="#E6111827" CornerRadius="10" IsHitTestVisible="False" Visibility="{Binding FeedbackVisibility}">
+                        Style="{StaticResource SurfaceCard}" IsHitTestVisible="False" Visibility="{Binding FeedbackVisibility}">
                     <TextBlock Text="{Binding FeedbackText}" FontSize="18" FontWeight="SemiBold" TextWrapping="Wrap"
                                FontFamily="Consolas" AutomationProperties.LiveSetting="Polite" />
                 </Border>
-                <Border x:Name="MediaInfoPanel" HorizontalAlignment="Right" Width="440" Padding="16" Background="#FA111827"
-                        CornerRadius="12" Visibility="{Binding InfoPanelVisibility}" TabFocusNavigation="Cycle">
+                <Border x:Name="MediaInfoPanel" HorizontalAlignment="Right" Width="400" Padding="20" Style="{StaticResource SurfaceCard}"
+                        Visibility="{Binding InfoPanelVisibility}" TabFocusNavigation="Cycle">
                     <Grid RowSpacing="10">
                         <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
                         <Grid>
                             <TextBlock Text="媒体信息" FontSize="20" FontWeight="SemiBold" VerticalAlignment="Center" />
-                            <Button x:Name="CloseInfoButton" Content="关闭" HorizontalAlignment="Right" Command="{Binding ToggleInfoPanelCommand}"
-                                    Style="{StaticResource TransportButton}" AutomationProperties.Name="关闭媒体信息" />
+                            <Button x:Name="CloseInfoButton" HorizontalAlignment="Right" Command="{Binding ToggleInfoPanelCommand}"
+                                    Style="{StaticResource TransportButton}" AutomationProperties.Name="关闭媒体信息" ToolTipService.ToolTip="关闭">
+                                <FontIcon Glyph="&#xE711;" FontSize="14" />
+                            </Button>
                         </Grid>
                         <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
                             <StackPanel Spacing="10">
-                                <TextBlock Text="视频" Foreground="#8DBBFA" />
+                                <TextBlock Text="视频" Style="{StaticResource PanelHeading}" />
                                 <TextBlock Text="{Binding InfoPanel.VideoSummary}" TextWrapping="Wrap" />
-                                <TextBlock Text="音频 / 缓存" Foreground="#8DBBFA" />
+                                <TextBlock Text="音频 / 缓存" Style="{StaticResource PanelHeading}" />
                                 <TextBlock Text="{Binding InfoPanel.AudioSummary}" TextWrapping="Wrap" />
-                                <TextBlock Text="色彩 / 解码 / 输出" Foreground="#8DBBFA" />
+                                <TextBlock Text="色彩 / 解码 / 输出" Style="{StaticResource PanelHeading}" />
                                 <TextBlock Text="{Binding InfoPanel.HdrSummary}" TextWrapping="Wrap" />
                                 <TextBlock Text="{Binding InfoPanel.DecodeSummary}" TextWrapping="Wrap" />
                                 <TextBlock Text="{Binding InfoPanel.OutputSummary}" TextWrapping="Wrap" />
@@ -121,42 +164,46 @@
                         </ScrollViewer>
                     </Grid>
                 </Border>
-                <Border x:Name="TrackPanel" HorizontalAlignment="Right" Width="440" Padding="16" Background="#FA111827"
-                        CornerRadius="12" Visibility="{Binding TracksVisibility}" TabFocusNavigation="Cycle">
+                <Border x:Name="TrackPanel" HorizontalAlignment="Right" Width="400" Padding="20" Style="{StaticResource SurfaceCard}"
+                        Visibility="{Binding TracksVisibility}" TabFocusNavigation="Cycle">
                     <Grid RowSpacing="8">
                         <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
                         <Grid>
                             <TextBlock Text="字幕 / 音轨" FontSize="20" FontWeight="SemiBold" VerticalAlignment="Center" />
-                            <Button x:Name="CloseTracksButton" Content="关闭" HorizontalAlignment="Right" Command="{Binding ToggleTracksCommand}"
-                                    Style="{StaticResource TransportButton}" AutomationProperties.Name="关闭轨道面板" />
+                            <Button x:Name="CloseTracksButton" HorizontalAlignment="Right" Command="{Binding ToggleTracksCommand}"
+                                    Style="{StaticResource TransportButton}" AutomationProperties.Name="关闭轨道面板" ToolTipService.ToolTip="关闭">
+                                <FontIcon Glyph="&#xE711;" FontSize="14" />
+                            </Button>
                         </Grid>
                         <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
                             <StackPanel Spacing="8">
-                                <TextBlock Text="音轨" FontWeight="SemiBold" Foreground="#8DBBFA" />
-                                <TextBlock Text="当前媒体没有音轨" Visibility="{Binding AudioTracksEmptyVisibility}" Foreground="#AAB5C8" />
+                                <TextBlock Text="音轨" Style="{StaticResource PanelHeading}" />
+                                <TextBlock Text="当前媒体没有音轨" Visibility="{Binding AudioTracksEmptyVisibility}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                                 <ListView ItemsSource="{Binding AudioTrackOptions}" IsEnabled="{Binding CanSelectTracks}" IsItemClickEnabled="True"
                                           ItemClick="OnTrackOptionClicked" SelectionMode="None" ItemTemplate="{StaticResource TrackOptionTemplate}" AutomationProperties.Name="音轨列表" />
-                                <TextBlock Text="字幕" FontWeight="SemiBold" Foreground="#8DBBFA" />
-                                <TextBlock Text="当前媒体没有内嵌字幕" Visibility="{Binding SubtitleTracksEmptyVisibility}" Foreground="#AAB5C8" />
+                                <TextBlock Text="字幕" Style="{StaticResource PanelHeading}" />
+                                <TextBlock Text="当前媒体没有内嵌字幕" Visibility="{Binding SubtitleTracksEmptyVisibility}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                                 <ListView ItemsSource="{Binding SubtitleTrackOptions}" IsEnabled="{Binding CanSelectTracks}" IsItemClickEnabled="True"
                                           ItemClick="OnTrackOptionClicked" SelectionMode="None" ItemTemplate="{StaticResource TrackOptionTemplate}" AutomationProperties.Name="字幕列表" />
                             </StackPanel>
                         </ScrollViewer>
                     </Grid>
                 </Border>
-                <Border x:Name="RecentPanel" HorizontalAlignment="Right" Width="440" Padding="16" Background="#FA111827"
-                        CornerRadius="12" Visibility="{Binding OsdVisibility}" TabFocusNavigation="Cycle">
+                <Border x:Name="RecentPanel" HorizontalAlignment="Right" Width="400" Padding="20" Style="{StaticResource SurfaceCard}"
+                        Visibility="{Binding OsdVisibility}" TabFocusNavigation="Cycle">
                     <Grid RowSpacing="10">
                         <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
                         <Grid>
                             <TextBlock Text="最近打开" FontSize="20" FontWeight="SemiBold" VerticalAlignment="Center" />
-                            <Button x:Name="CloseRecentButton" Content="关闭" HorizontalAlignment="Right" Command="{Binding ToggleOsdCommand}"
-                                    Style="{StaticResource TransportButton}" AutomationProperties.Name="关闭最近打开" />
+                            <Button x:Name="CloseRecentButton" HorizontalAlignment="Right" Command="{Binding ToggleOsdCommand}"
+                                    Style="{StaticResource TransportButton}" AutomationProperties.Name="关闭最近打开" ToolTipService.ToolTip="关闭">
+                                <FontIcon Glyph="&#xE711;" FontSize="14" />
+                            </Button>
                         </Grid>
                         <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
                             <StackPanel Spacing="8">
-                                <TextBlock Text="还没有最近打开记录" Foreground="#AAB5C8" Visibility="{Binding RecentEmptyVisibility}" />
-                                <TextBlock Text="{Binding RecentHistoryMessage}" Foreground="#FCD34D" TextWrapping="Wrap"
+                                <TextBlock Text="还没有最近打开记录" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Visibility="{Binding RecentEmptyVisibility}" />
+                                <TextBlock Text="{Binding RecentHistoryMessage}" Foreground="{ThemeResource SystemFillColorCautionBrush}" TextWrapping="Wrap"
                                            Visibility="{Binding RecentHistoryMessageVisibility}" />
                                 <ListView ItemsSource="{Binding RecentUrls}" IsItemClickEnabled="True" ItemClick="OnRecentMediaClicked" SelectionMode="None" AutomationProperties.Name="最近打开列表">
                                     <ListView.ItemTemplate><DataTemplate>
@@ -170,18 +217,18 @@
                     </Grid>
                 </Border>
             </Grid>
-            <Border x:Name="TransportChrome" Grid.Row="2" Padding="14,10" Background="#ED111827" CornerRadius="12" Visibility="{Binding ControlsVisibility}">
+            <Border x:Name="TransportChrome" Grid.Row="2" Padding="16,8,16,12" Style="{StaticResource SurfaceCard}" Visibility="{Binding TransportVisibility}">
                 <ContentControl x:Name="TransportControls" IsEnabled="False" HorizontalContentAlignment="Stretch">
                     <StackPanel Spacing="6">
                         <Grid ColumnSpacing="12">
-                            <Grid.RowDefinitions><RowDefinition Height="24" /><RowDefinition Height="48" /></Grid.RowDefinitions>
+                            <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="40" /></Grid.RowDefinitions>
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                            <Border HorizontalAlignment="Center" Padding="10,2" Background="#F01F304A" CornerRadius="6"
+                            <Border HorizontalAlignment="Center" Padding="10,4" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" CornerRadius="4"
                                     IsHitTestVisible="False" Visibility="{Binding TimelinePreviewVisibility}">
-                                <TextBlock Text="{Binding TimelinePreviewText}" FontFamily="Consolas" Foreground="#C7E0FF" />
+                                <TextBlock Text="{Binding TimelinePreviewText}" FontFamily="Consolas" />
                             </Border>
                             <Grid Grid.Row="1" ToolTipService.ToolTip="{Binding SeekDisabledReason}">
-                                <Slider x:Name="Timeline" Minimum="0" Maximum="1" SmallChange="5" LargeChange="30" MinHeight="48"
+                                <Slider x:Name="Timeline" Minimum="0" Maximum="1" SmallChange="5" LargeChange="30" MinHeight="40"
                                         IsThumbToolTipEnabled="False" ValueChanged="OnTimelineValueChanged" AutomationProperties.Name="播放进度"
                                         AutomationProperties.HelpText="{Binding SeekDisabledReason}" />
                                 <Grid x:Name="TimelineHitTarget" Background="Transparent" IsHitTestVisible="{Binding CanSeek}"
@@ -189,18 +236,26 @@
                                       PointerExited="OnTimelinePointerExited" PointerPressed="OnTimelinePressed"
                                       PointerReleased="OnTimelineReleased" PointerCanceled="OnTimelineCanceled" PointerCaptureLost="OnTimelineCanceled" />
                             </Grid>
-                            <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding TimeLabel}" VerticalAlignment="Center" FontFamily="Consolas" />
+                            <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding TimeLabel}" VerticalAlignment="Center" FontFamily="Consolas" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                         </Grid>
                         <Grid ColumnSpacing="12" RowSpacing="8">
                             <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
-                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                            <StackPanel x:Name="PrimaryTransportButtons" Grid.ColumnSpan="3" Orientation="Horizontal" Spacing="6">
-                                <Button Content="−15s" Command="{Binding SeekBackwardCommand}" IsEnabled="{Binding CanSeek}" Style="{StaticResource TransportButton}" AutomationProperties.Name="后退15秒" />
-                                <Button Content="{Binding PlayPauseLabel}" Command="{Binding TogglePlayPauseCommand}" IsEnabled="{Binding CanTogglePlayback}"
-                                        Style="{StaticResource TransportButton}" MinWidth="78" Background="#315F9C" ToolTipService.ToolTip="{Binding PlaybackDisabledReason}" />
-                                <Button Content="停止" Command="{Binding StopCommand}" IsEnabled="{Binding CanStopPlayback}" Style="{StaticResource TransportButton}" AutomationProperties.Name="停止播放" />
-                                <Button Content="+30s" Command="{Binding SeekForwardCommand}" IsEnabled="{Binding CanSeek}" Style="{StaticResource TransportButton}" AutomationProperties.Name="前进30秒" />
-                                <Button Content="{Binding SpeedLabel}" IsEnabled="{Binding CanChangeSpeed}" Style="{StaticResource TransportButton}" MinWidth="100" AutomationProperties.Name="播放倍速">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                            <StackPanel x:Name="PrimaryTransportButtons" Grid.ColumnSpan="3" HorizontalAlignment="Center" Orientation="Horizontal" Spacing="8">
+                                <Button Command="{Binding SeekBackwardCommand}" IsEnabled="{Binding CanSeek}" Style="{StaticResource TransportButton}" AutomationProperties.Name="后退15秒" ToolTipService.ToolTip="后退 15 秒">
+                                    <StackPanel Spacing="1"><FontIcon Glyph="&#xE892;" FontSize="16" /><TextBlock Text="15" FontSize="10" HorizontalAlignment="Center" /></StackPanel>
+                                </Button>
+                                <Button Command="{Binding TogglePlayPauseCommand}" IsEnabled="{Binding CanTogglePlayback}" AutomationProperties.Name="{Binding PlayPauseLabel}"
+                                        Style="{StaticResource AccentButtonStyle}" Width="52" Height="52" CornerRadius="26" ToolTipService.ToolTip="{Binding PlayPauseLabel}" AutomationProperties.HelpText="{Binding PlaybackDisabledReason}">
+                                    <FontIcon Glyph="{Binding PlayPauseGlyph}" FontSize="20" />
+                                </Button>
+                                <Button Command="{Binding SeekForwardCommand}" IsEnabled="{Binding CanSeek}" Style="{StaticResource TransportButton}" AutomationProperties.Name="前进30秒" ToolTipService.ToolTip="前进 30 秒">
+                                    <StackPanel Spacing="1"><FontIcon Glyph="&#xE893;" FontSize="16" /><TextBlock Text="30" FontSize="10" HorizontalAlignment="Center" /></StackPanel>
+                                </Button>
+                                <Button Command="{Binding StopCommand}" IsEnabled="{Binding CanStopPlayback}" Style="{StaticResource TransportButton}" AutomationProperties.Name="停止播放" ToolTipService.ToolTip="停止播放">
+                                    <FontIcon Glyph="&#xE71A;" FontSize="16" />
+                                </Button>
+                                <Button Content="{Binding SpeedLabel}" IsEnabled="{Binding CanChangeSpeed}" Style="{StaticResource TransportButton}" AutomationProperties.Name="播放倍速" ToolTipService.ToolTip="播放速度">
                                     <Button.Flyout>
                                         <MenuFlyout Opened="OnSpeedMenuOpened" Closed="OnSpeedMenuClosed">
                                             <MenuFlyoutItem Text="0.25×" Tag="0.25" Click="OnSpeedClicked" />
@@ -217,19 +272,25 @@
                                 </Button>
                             </StackPanel>
                             <StackPanel x:Name="VolumeControls" Grid.Row="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                                <Button Content="{Binding MuteLabel}" Command="{Binding ToggleMuteCommand}" IsEnabled="{Binding CanAdjustVolume}" Style="{StaticResource TransportButton}" />
-                                <Slider x:Name="VolumeSlider" Width="88" MinHeight="48" Minimum="0" Maximum="100" Value="100" IsEnabled="{Binding CanAdjustVolume}"
+                                <Button Command="{Binding ToggleMuteCommand}" IsEnabled="{Binding CanAdjustVolume}" Style="{StaticResource TransportButton}" AutomationProperties.Name="{Binding MuteLabel}" ToolTipService.ToolTip="{Binding MuteLabel}">
+                                    <FontIcon Glyph="{Binding VolumeGlyph}" FontSize="18" />
+                                </Button>
+                                <Slider x:Name="VolumeSlider" Width="88" MinHeight="44" Minimum="0" Maximum="100" Value="100" IsEnabled="{Binding CanAdjustVolume}"
                                         ValueChanged="OnVolumeValueChanged" AutomationProperties.Name="音量" VerticalAlignment="Center" />
-                                <TextBlock Text="{Binding VolumeLabel}" MinWidth="38" FontFamily="Consolas" VerticalAlignment="Center" Foreground="#AAB5C8" />
+                                <TextBlock Text="{Binding VolumeLabel}" MinWidth="38" FontSize="12" FontFamily="Consolas" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                             </StackPanel>
                             <StackPanel x:Name="SecondaryTransportButtons" Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" HorizontalAlignment="Right" Orientation="Horizontal" Spacing="6">
-                                <Button x:Name="TracksButton" Content="轨道" Command="{Binding ToggleTracksCommand}" Style="{StaticResource TransportButton}" />
-                                <Button x:Name="InfoButton" Content="信息" Command="{Binding ToggleInfoPanelCommand}" Style="{StaticResource TransportButton}" />
-                                <Button x:Name="RecentButton" Content="最近" Command="{Binding ToggleOsdCommand}" Style="{StaticResource TransportButton}" />
-                                <Button x:Name="FullscreenButton" Content="全屏" Click="OnFullscreenClicked" Style="{StaticResource TransportButton}" ToolTipService.ToolTip="全屏 / 退出全屏 (F11)" />
+                                <Button x:Name="TracksButton" Command="{Binding ToggleTracksCommand}" Style="{StaticResource TransportButton}" AutomationProperties.Name="字幕和音轨" ToolTipService.ToolTip="字幕和音轨">
+                                    <FontIcon Glyph="&#xED1F;" FontSize="20" />
+                                </Button>
+                                <Button x:Name="InfoButton" Command="{Binding ToggleInfoPanelCommand}" Style="{StaticResource TransportButton}" AutomationProperties.Name="媒体信息" ToolTipService.ToolTip="媒体信息">
+                                    <FontIcon Glyph="&#xE946;" FontSize="18" />
+                                </Button>
+                                <Button x:Name="FullscreenButton" Click="OnFullscreenClicked" Style="{StaticResource TransportButton}" AutomationProperties.Name="全屏" ToolTipService.ToolTip="全屏 / 退出全屏 (F11)">
+                                    <FontIcon x:Name="FullscreenIcon" Glyph="&#xE740;" FontSize="18" />
+                                </Button>
                             </StackPanel>
                         </Grid>
-                        <TextBlock Text="空格 播放/暂停 · ← → 定位 · F11 全屏 · Esc 关闭浮层 / 退出全屏" FontSize="12" Foreground="#8B9BB4" TextTrimming="CharacterEllipsis" />
                     </StackPanel>
                 </ContentControl>
             </Border>

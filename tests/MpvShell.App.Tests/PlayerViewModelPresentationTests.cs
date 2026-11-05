@@ -16,6 +16,8 @@ public sealed class PlayerViewModelPresentationTests
         await using var vm = new PlayerViewModel(new EventPublishingBackend(), new());
 
         vm.WelcomeVisibility.Should().Be(Visibility.Visible);
+        vm.IdleSurfaceVisibility.Should().Be(Visibility.Visible);
+        vm.TransportVisibility.Should().Be(Visibility.Collapsed);
         vm.StatusVisibility.Should().Be(Visibility.Collapsed);
         vm.CanTogglePlayback.Should().BeFalse();
         vm.CanStopPlayback.Should().BeFalse();
@@ -24,6 +26,50 @@ public sealed class PlayerViewModelPresentationTests
         vm.SeekDisabledReason.Should().Contain("播放媒体");
         vm.CanAdjustVolume.Should().BeTrue();
         vm.CanChangeSpeed.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Playback_chrome_should_follow_media_lifecycle_and_auto_hide_without_replacing_the_video_background()
+    {
+        await using var vm = new PlayerViewModel(new EventPublishingBackend(), new());
+        var notifications = new List<string?>();
+        vm.PropertyChanged += (_, e) => notifications.Add(e.PropertyName);
+
+        vm.State = vm.State with { CurrentUrl = "sample.mp4", IsStopped = false, IsPlaying = true, AreControlsVisible = true };
+        vm.IdleSurfaceVisibility.Should().Be(Visibility.Collapsed);
+        vm.TransportVisibility.Should().Be(Visibility.Visible);
+        vm.PlayPauseLabel.Should().Be("暂停");
+        vm.PlayPauseGlyph.Should().Be("\uE769");
+        notifications.Should().Contain(new[] { nameof(vm.IdleSurfaceVisibility), nameof(vm.TransportVisibility), nameof(vm.PlayPauseGlyph) });
+
+        vm.State = vm.State with { AreControlsVisible = false };
+        vm.TransportVisibility.Should().Be(Visibility.Collapsed);
+        vm.IdleSurfaceVisibility.Should().Be(Visibility.Collapsed);
+
+        vm.State = vm.State with { IsPlaying = false, AreControlsVisible = true };
+        vm.PlayPauseGlyph.Should().Be("\uE768");
+        vm.IdleSurfaceVisibility.Should().Be(Visibility.Collapsed);
+
+        vm.State = vm.State with { IsStopped = true };
+        vm.IdleSurfaceVisibility.Should().Be(Visibility.Visible);
+        vm.TransportVisibility.Should().Be(Visibility.Visible);
+    }
+
+    [Theory]
+    [InlineData(false, 100, "\uE767", "静音")]
+    [InlineData(true, 100, "\uE74F", "取消静音")]
+    [InlineData(false, 0, "\uE74F", "静音")]
+    public async Task Volume_icon_should_match_audible_state_and_preserve_the_accessible_action(bool muted, int volume, string glyph, string label)
+    {
+        await using var vm = new PlayerViewModel(new EventPublishingBackend(), new());
+        var notifications = new List<string?>();
+        vm.PropertyChanged += (_, e) => notifications.Add(e.PropertyName);
+
+        vm.State = vm.State with { IsMuted = muted, Volume = volume, AreControlsVisible = true };
+
+        vm.VolumeGlyph.Should().Be(glyph);
+        vm.MuteLabel.Should().Be(label);
+        notifications.Should().Contain(nameof(vm.VolumeGlyph));
     }
 
     [Fact]

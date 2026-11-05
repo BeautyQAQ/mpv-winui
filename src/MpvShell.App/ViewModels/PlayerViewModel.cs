@@ -44,7 +44,9 @@ public partial class PlayerViewModel : ObservableObject, IAsyncDisposable
 
     public bool IsInitialized => _isInitialized;
     public string PlayPauseLabel => State.IsPlaying ? "暂停" : "播放";
+    public string PlayPauseGlyph => State.IsPlaying ? "\uE769" : "\uE768";
     public string MuteLabel => State.IsMuted ? "取消静音" : "静音";
+    public string VolumeGlyph => State.IsMuted || State.Volume <= 0 ? "\uE74F" : "\uE767";
     public string SpeedLabel => $"倍速 {State.Speed.ToString("0.##", CultureInfo.InvariantCulture)}×";
     public bool IsStopping
     {
@@ -55,7 +57,7 @@ public partial class PlayerViewModel : ObservableObject, IAsyncDisposable
         }
     }
     public string TimeLabel => $"{FormatTime(State.PositionSeconds)} / {FormatTime(State.DurationSeconds)}";
-    public string MediaTitle => string.IsNullOrEmpty(State.CurrentUrl) ? "打开视频开始播放" :
+    public string MediaTitle => string.IsNullOrEmpty(State.CurrentUrl) ? "MpvShell" :
         Uri.TryCreate(State.CurrentUrl, UriKind.Absolute, out var uri) && !uri.IsFile
             ? uri.GetLeftPart(UriPartial.Path)
             : Path.GetFileName(State.CurrentUrl);
@@ -190,7 +192,9 @@ public partial class PlayerViewModel : ObservableObject, IAsyncDisposable
             OnPropertyChanged(nameof(OsdVisibility));
             OnPropertyChanged(nameof(TracksVisibility));
             OnPropertyChanged(nameof(PlayPauseLabel));
+            OnPropertyChanged(nameof(PlayPauseGlyph));
             OnPropertyChanged(nameof(MuteLabel));
+            OnPropertyChanged(nameof(VolumeGlyph));
             OnPropertyChanged(nameof(SpeedLabel));
             OnPropertyChanged(nameof(TimeLabel));
             OnPropertyChanged(nameof(MediaTitle));

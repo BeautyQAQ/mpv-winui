@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
@@ -31,6 +32,7 @@ public sealed partial class PlayerPage : Page
     private bool _ready;
     private bool _updatingSliders;
     private bool _speedMenuOpen;
+    private bool _openMediaFlyoutOpen;
     private bool _filePickerOpen;
     private bool _windowActive = true;
     private bool _pointerOverControls;
@@ -196,7 +198,7 @@ public sealed partial class PlayerPage : Page
         if (_ready && (args.DidPositionChange || args.DidSizeChange)) _displayOutputMonitor?.Refresh();
         if (args.DidPresenterChange)
         {
-            FullscreenButton.Content = sender.Presenter.Kind == AppWindowPresenterKind.FullScreen ? "退出全屏" : "全屏";
+            UpdateFullscreenButton(sender.Presenter.Kind == AppWindowPresenterKind.FullScreen);
             CancelInputInteractions();
             ViewModel.RevealControls();
         }
@@ -309,7 +311,32 @@ public sealed partial class PlayerPage : Page
     {
         if (e.Key != VirtualKey.Enter) return;
         e.Handled = true;
+        OpenMediaFlyout.Hide();
         await OpenMediaAsync(MediaInput.Text);
+    }
+
+    private void OnWelcomeOpenLinkClicked(object sender, RoutedEventArgs e) => OpenMediaFlyout.ShowAt((FrameworkElement)sender);
+
+    private async void OnOpenMediaSubmitted(object sender, RoutedEventArgs e)
+    {
+        OpenMediaFlyout.Hide();
+        await OpenMediaAsync(MediaInput.Text);
+    }
+
+    private void OnOpenMediaFlyoutOpened(object sender, object e)
+    {
+        _openMediaFlyoutOpen = true;
+        CancelInputInteractions();
+        _autoHideTimer?.Stop();
+        ViewModel.RevealControls();
+        MediaInput.Focus(FocusState.Programmatic);
+        MediaInput.SelectAll();
+    }
+
+    private void OnOpenMediaFlyoutClosed(object sender, object e)
+    {
+        _openMediaFlyoutOpen = false;
+        RestartAutoHideTimer();
     }
 
     private async void OnRecentMediaClicked(object sender, ItemClickEventArgs e)
@@ -418,7 +445,7 @@ public sealed partial class PlayerPage : Page
 
     private void OnVideoDoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
     {
-        if (ViewModel.State.CurrentOverlay != OverlayKind.None || _speedMenuOpen) return;
+        if (ViewModel.State.CurrentOverlay != OverlayKind.None || _speedMenuOpen || _openMediaFlyoutOpen) return;
         ToggleFullscreen();
         e.Handled = true;
     }
@@ -430,15 +457,21 @@ public sealed partial class PlayerPage : Page
         var window = ((App)Application.Current).MainWindowInstance!;
         var isFullscreen = window.AppWindow.Presenter.Kind == AppWindowPresenterKind.FullScreen;
         window.AppWindow.SetPresenter(isFullscreen ? AppWindowPresenterKind.Default : AppWindowPresenterKind.FullScreen);
-        FullscreenButton.Content = isFullscreen ? "全屏" : "退出全屏";
+        UpdateFullscreenButton(!isFullscreen);
         ViewModel.RevealControls();
         RestartAutoHideTimer();
+    }
+
+    private void UpdateFullscreenButton(bool isFullscreen)
+    {
+        FullscreenIcon.Glyph = isFullscreen ? "\uE73F" : "\uE740";
+        AutomationProperties.SetName(FullscreenButton, isFullscreen ? "退出全屏" : "全屏");
     }
 
     private void OnPlayerPreviewKeyDown(object sender, KeyRoutedEventArgs e)
     {
         if (_releaseTask is not null) return;
-        if (e.Key == VirtualKey.F11 && !_speedMenuOpen)
+        if (e.Key == VirtualKey.F11 && !_speedMenuOpen && !_openMediaFlyoutOpen)
         {
             ToggleFullscreen();
             e.Handled = true;
@@ -447,7 +480,7 @@ public sealed partial class PlayerPage : Page
         if (e.Key != VirtualKey.Escape) return;
         var isFullscreen = ((App)Application.Current).MainWindowInstance!.AppWindow.Presenter.Kind == AppWindowPresenterKind.FullScreen;
         var action = PlayerChromePolicy.ResolveEscape(ViewModel.HasActiveInteraction, ViewModel.HasTimelinePreview,
-            _speedMenuOpen || _filePickerOpen, ViewModel.State.CurrentOverlay != OverlayKind.None, isFullscreen);
+            _speedMenuOpen || _openMediaFlyoutOpen || _filePickerOpen, ViewModel.State.CurrentOverlay != OverlayKind.None, isFullscreen);
         switch (action)
         {
             case PlayerEscapeAction.CancelInteraction: CancelInputInteractions(); break;
@@ -467,7 +500,7 @@ public sealed partial class PlayerPage : Page
         if ((Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Menu) & Windows.UI.Core.CoreVirtualKeyStates.Down) != 0 ||
             (Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Control) & Windows.UI.Core.CoreVirtualKeyStates.Down) != 0) return;
         var focusedControl = FocusManager.GetFocusedElement(XamlRoot);
-        if (e.Handled || focusedControl is TextBox or MenuFlyoutItemBase || _speedMenuOpen || ViewModel.State.CurrentOverlay != OverlayKind.None) return;
+        if (e.Handled || focusedControl is TextBox or MenuFlyoutItemBase || _speedMenuOpen || _openMediaFlyoutOpen || ViewModel.State.CurrentOverlay != OverlayKind.None) return;
         if (!_ready) return;
         if (e.Key == VirtualKey.Space && focusedControl is not ButtonBase && focusedControl is not Slider)
         {
@@ -693,7 +726,7 @@ public sealed partial class PlayerPage : Page
             (focused is TextBox || focused.FocusState == FocusState.Keyboard);
         return PlayerChromePolicy.CanAutoHide(new(_ready, _windowActive, ViewModel.State.IsPlaying,
             ViewModel.State.IsStopped, ViewModel.State.CurrentOverlay != OverlayKind.None,
-            ViewModel.HasActiveInteraction, ViewModel.HasTimelinePreview, _speedMenuOpen || _filePickerOpen || ViewModel.IsLoading || ViewModel.IsBuffering,
+            ViewModel.HasActiveInteraction, ViewModel.HasTimelinePreview, _speedMenuOpen || _openMediaFlyoutOpen || _filePickerOpen || ViewModel.IsLoading || ViewModel.IsBuffering,
             _pointerOverControls, keyboardFocus));
     }
 

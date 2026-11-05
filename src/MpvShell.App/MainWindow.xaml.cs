@@ -17,6 +17,8 @@ public sealed partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        RootFrame.ActualThemeChanged += OnActualThemeChanged;
+        UpdateTitleBarTheme();
         // AppWindow.Resize 使用物理像素。进程已声明 PerMonitorV2，按当前显示器 DPI 换算，
         // 使 150% 缩放的 4K 屏和 100% 的 1080p 屏得到相同的逻辑窗口大小。
         var dpi = GetDpiForWindow(WinRT.Interop.WindowNative.GetWindowHandle(this));
@@ -32,6 +34,11 @@ public sealed partial class MainWindow : Window
 
     [System.Runtime.InteropServices.DllImport("user32.dll")]
     private static extern uint GetDpiForWindow(nint hwnd);
+
+    private void OnActualThemeChanged(FrameworkElement sender, object args) => UpdateTitleBarTheme();
+
+    private void UpdateTitleBarTheme() => AppWindow.TitleBar.PreferredTheme =
+        RootFrame.ActualTheme == ElementTheme.Dark ? TitleBarTheme.Dark : TitleBarTheme.Light;
 
     private void OnAppWindowChanged(AppWindow sender, AppWindowChangedEventArgs args)
     {
