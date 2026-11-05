@@ -36,3 +36,10 @@
 - [P1-00 基线与发布入口核验](P1-00-01-baseline-and-release-entry.md)
 - [P0-11 范围内验收](P0-11-01-phase-0-acceptance.md)
 - [TS 跳转修复与外机复测](ts-seek-keyframe-2026-09-12.md)
+
+## 2026-11-05 补回的本地历史证据
+
+- [2026-10-29 RTX 3070 复测与历史候选](P3-00-02-rtx3070-retest.md)
+- [2026-10-29 P3-02 同进程连续短测与正常收尾](P3-02-01-continuous-short-test.md)
+
+以上保留原源码、日期和适用范围，当前状态统一见 [Phase 3 进度](../phase-3-progress.md)。

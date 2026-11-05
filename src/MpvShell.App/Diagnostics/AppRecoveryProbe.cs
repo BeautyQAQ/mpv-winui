@@ -16,7 +16,7 @@ using Windows.Graphics;
 namespace MpvShell.App.Diagnostics;
 
 /// <summary>由验收脚本显式启用，在真实 PlayerPage 内运行。所有 GPU 读回均限于 Debug 测试。</summary>
-internal sealed class AppRecoveryProbe
+internal sealed partial class AppRecoveryProbe
 {
     private const int RecoveryHoldMilliseconds = 2000;
     private static int _started;
@@ -72,8 +72,10 @@ internal sealed class AppRecoveryProbe
             if (!Path.IsPathFullyQualified(reportPath)) throw new ArgumentException("验收报告必须使用绝对路径。");
             if (mode is not ("playing" or "paused" or "immediate-failure" or "rebuild-failure" or "resize" or "playback"
                 or "performance" or "page-rebuild-playing" or "page-rebuild-paused" or "close-during-recovery"
-                or "close-during-load" or "close-during-startup-load" or "recovery-media-switch")) throw new ArgumentException("未知验收模式。");
+                or "close-during-load" or "close-during-startup-load" or "recovery-media-switch" or "continuous")) throw new ArgumentException("未知验收模式。");
             if (!ready) throw new InvalidOperationException(vm.ErrorMessage ?? "播放器初始化未完成。");
+            // 连续场景在任何控制操作前校验完整计划，普通模式保持原来的启动和验收流程。
+            var continuousPlan = mode == "continuous" ? ReadContinuousPlan(arguments) : null;
             // 普通探针保持等待启动媒体的原语义；启动加载关闭模式必须观察 OnLoaded 已提交的同一任务。
             if (mode != "close-during-startup-load" && startupLoad is not null) await startupLoad;
             report["Device"] = await renderer.GetDeviceInfoAsync(CancellationToken.None);
@@ -90,7 +92,7 @@ internal sealed class AppRecoveryProbe
                 report["Status"] = "Passed";
                 return;
             }
-            if (string.IsNullOrEmpty(vm.State.CurrentUrl)) throw new InvalidOperationException("验收需要指定媒体。");
+            if (mode != "continuous" && string.IsNullOrEmpty(vm.State.CurrentUrl)) throw new InvalidOperationException("验收需要指定媒体。");
             await session.SetPropertyAsync("mute", true, CancellationToken.None);
             await renderer.SetTestCallbacksAsync(probe.BeforeRender, probe.ReadFrame,
                 probe.OnPresented, () =>
@@ -102,6 +104,12 @@ internal sealed class AppRecoveryProbe
                     if (Interlocked.Exchange(ref probe._resizeFaultPending, 0) == 1)
                         probe.ThrowInjectedFailure(generation);
                 });
+            if (continuousPlan is not null)
+            {
+                await probe.VerifyContinuousPlaybackAsync(renderer, session, vm, report, continuousPlan);
+                report["Status"] = "Passed";
+                return;
+            }
             await probe.UntilAsync(() => Interlocked.Read(ref probe._frames) >= 30 && vm.State.PositionSeconds > 0,
                 vm, "等待初始播放帧");
             var initial = await probe.WaitForImageAsync(renderer, vm, 1, forceRedraw: mode is not ("playback" or "performance"));

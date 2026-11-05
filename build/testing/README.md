@@ -71,13 +71,29 @@ pwsh -File build/testing/test-app-recovery.ps1 -NoBuild -MediaPath 'C:\Users\a14
 pwsh -File build/testing/test-app-recovery.ps1 -NoBuild -Mode paused
 ```
 
-另有非默认的 `playback` 模式，不注入故障，不强制重绘，间隔读取自然呈现的画面直到 EOF，检查画面变化、硬解模式稳定、正常结束及资源释放。仍受每进程 90 秒上限约束，适用于本次约 75 秒的 LG 样片，不能直接用于任意长片：
+另有非默认的 `playback` 模式，不注入故障，不强制重绘，间隔读取自然呈现的画面直到 EOF，检查画面变化、硬解模式稳定、正常结束及资源释放。默认每进程限时 90 秒；较长视频须显式指定足够的 `-TimeoutSeconds`，保留启动和关闭余量：
 
 ```powershell
 pwsh -File build/testing/test-app-recovery.ps1 -NoBuild -Mode playback -MediaPath 'C:\Users\a1426\Downloads\LG.4K.HDR.DEMO_OLED.Art.ts'
 ```
 
 通过 `-AppPath` 可指定 Debug 可执行文件，`-ReportDirectory` 可指定报告目录。默认报告位于 `artifacts/app-recovery/<时间与唯一标识>/`；每次运行保留独立素材、场景报告和汇总，不覆盖已有文件。使用 HDR 文件通过恢复测试说明该输入的应用播放与恢复流程可用；显示器实际 HDR 输出和颜色准确性仍需另外验证。
+
+## 同进程有限连续测试
+
+`continuous` 仅在显式选择 `-Mode continuous` 时执行，不加入默认 11 项独立进程场景。在同一 Debug 应用进程内按轮次依次打开媒体，检查播放推进、暂停保持、恢复、停止归零和停止后重播，再核对正常收尾、释放与进程退出。可选 `-ContinuousMediaPaths` 接收至少两份不同的本地媒体；不提供时生成两份不同颜色的运动样片。该模式及其新参数的实际验收结果见 [P3-02 短测记录](../../docs/implementation/evidence/P3-02-01-continuous-short-test.md)。
+
+```powershell
+# 在 PowerShell 7 中执行；示例目录应使用新的、尚不存在的报告目录。
+& ./build/testing/test-app-recovery.ps1 -Mode continuous -ContinuousCycles 2 -ContinuousPlaySeconds 1.5 -ContinuousDurationSeconds 0 -TimeoutSeconds 180 -ReportDirectory artifacts/app-recovery/continuous-generated
+
+# 同一进程测试两份自备视频；-NoBuild 复用支持此模式的 Debug 构建。
+& ./build/testing/test-app-recovery.ps1 -NoBuild -Mode continuous -ContinuousMediaPaths @('C:\media\first.mkv', 'C:\media\second.mp4') -ContinuousCycles 1 -ContinuousPlaySeconds 1.5 -ContinuousDurationSeconds 0 -TimeoutSeconds 180 -ReportDirectory artifacts/app-recovery/continuous-videos
+```
+
+`ContinuousCycles` 默认 2，`ContinuousPlaySeconds` 默认 1.5 秒，`ContinuousDurationSeconds=0` 表示按轮数运行。正常收尾须同时核对报告、启动 PID、完成轮数、退出码和日志中的释放顺序；超时或缺失报告不能算通过。近期历史与调用环境必须在运行后恢复，失败报告及日志保留。该流程由 Debug 探针调用应用关闭/释放入口，再关闭窗口；它与独立的用户 Alt+F4 操作证据分别登记。
+
+2026-10-29 本轮两轮生成素材与一轮两份用户视频已完成，每进程显式上限 180 秒，分别完成 24/12 个动作，均正常收尾并退出 0；构建修正后两配置默认及既有模式回归通过，见 [短测记录](../../docs/implementation/evidence/P3-02-01-continuous-short-test.md)。两小时长测和资源趋势按用户要求暂缓，本轮未执行；有限循环不代表长时间稳定性、资源增长或性能验收，也不更新已封候选包。
 
 ## 应用内自然播放性能测量
 
