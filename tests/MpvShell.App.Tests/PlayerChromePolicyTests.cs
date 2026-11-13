@@ -35,6 +35,8 @@ public sealed class PlayerChromePolicyTests
         IdlePlayback with { HasTransientUi = true },
         IdlePlayback with { IsPointerOverControls = true },
         IdlePlayback with { HasKeyboardFocusWithinControls = true },
+        IdlePlayback with { HasPointerContact = true },
+        IdlePlayback with { IsWindowChromeInteracting = true },
     };
 
     [Theory]

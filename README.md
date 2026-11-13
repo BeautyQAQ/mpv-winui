@@ -1,8 +1,10 @@
-# MpvShell
+# Veyra
 
 Windows x64 的 WinUI 3 播放器，使用进程内 libmpv 和 ANGLE/D3D11，把视频直接渲染到 `SwapChainPanel`。
 
-**当前阶段：Phase 3 进行中，P3-00 新候选已在 RTX 3070 本轮范围内通过（2026-11-05）。** 新包包含旧 Intel HEVC 兼容修复及已合并的测试工具。两配置显式回归为 Debug 563/0/2、Release 547/0/2，实际候选 DLL 为 547/0/2；两项跳过均为旧 Intel 专用场景在本机不适用，严格 runner 与首轮配置失败原始结果保留。连续短测、最终目录 GUI、两次正常退出/重启恢复及封包核验完成，见 [本轮验收](docs/implementation/evidence/P3-00-07-current-candidate-20261105.md)。P3-02 两小时长测及资源趋势仍暂缓，P3-03 最终阶段验收未完成。
+2026-11-14 开发源码采用 **Veyra** 名称与新标志，并让窗口标题栏、顶部入口和底部控制条在播放闲置 3 秒后一起隐藏，见 [交互更新](docs/implementation/window-chrome-20261114.md) 与 [品牌说明](docs/implementation/branding-20261114.md)。下方 11 月 13 日冻结候选仍保留当时的 MpvShell 名称与行为，不包含这次增量。
+
+**当前阶段：Phase 3 进行中；新版 UI 候选的 P3-03 本轮发布范围验收通过（2026-11-13）。** 新包包含跟随 Windows 主题的界面、图标控制条和链接弹窗，以及既有旧 Intel HEVC 兼容修复。Debug/Release 显式回归分别为 567/0/2、551/0/2，实际候选 DLL 为 551/0/2；两项跳过为 RTX 3070 不适用的旧 Intel 专用场景，严格 runner 原始 false 保留，另行评定本机范围通过。有限连续短测、最终目录播放操作、运行中浅深色切换、两种高对比度主题、两次正常退出及最近记录重启恢复已验，见 [本轮验收](docs/implementation/evidence/P3-03-01-ui-candidate-20261113.md)。P3-02 两小时长测及资源趋势仍暂缓，不将本轮交付写成整个 Phase 3 完成。
 
 当前源码支持本地文件、HTTP/HTTPS 直链、基础 HLS、播放/暂停、停止后重播、0.25～4× 倍速、精确跳转、时间轴数字预览、画面拖动跳转/调音量及反馈、音量/静音、轨道选择、媒体信息、全屏和最近打开持久化。停止会卸载媒体并清空进度与媒体信息，保留地址供重播；倍速在本次运行中跨停止、换片和 EOF 保留。视频根据片源与 Windows HDR 状态使用 PQ 10-bit 输出或 SDR 色调映射；优先 D3D11VA，经 ANGLE 直接传递 GPU 帧，不可用时回退软件解码。最近打开保留最新 10 条，成功打开后保存到用户本地目录，提供清空入口。停止、倍速、最近打开持久化和时间轴/手势改进属于 Phase 2 源码改动，现有 Phase 1 发布包不包含这些功能。
 
@@ -32,7 +34,7 @@ dotnet test mpv-winui.slnx -p:Platform=x64 --no-build --no-restore
 
 ## 当前测试包与发布
 
-**[下载当前候选测试包](artifacts/candidates/MpvShell-phase3-candidate-20261105-193728-2dc25a.zip)**（约 135 MB，本轮 RTX 3070 范围通过），另有 [303 文件源码快照](artifacts/candidates/MpvShell-phase3-candidate-20261105-193728-2dc25a-source.zip)。新包来自干净 `28ffe46`，包含 Phase 2 功能和 11 月 4 日兼容修复；692 个 ZIP 文件逐项核验通过，来源、哈希和范围见 [发布入口](docs/implementation/release-status.md)。本机运行日志在包外，后补验收文档不在冻结源码快照中。ZIP 不随 Git 同步。
+**[下载当前候选测试包](artifacts/candidates/MpvShell-phase3-ui-candidate-20261113-233547-b4d96c.zip)**（本轮 RTX 3070 发布范围通过），另有 [对应源码快照](artifacts/candidates/MpvShell-phase3-ui-candidate-20261113-233547-b4d96c-source.zip)。新包来自干净 `2d44dbd`，包含系统主题 UI、Phase 2 功能及旧 Intel 兼容修复；来源、大小、内容核验和 SHA-256 见 [发布入口](docs/implementation/release-status.md)。11 月 5 日候选来自 `28ffe46`，不含新版 UI，作为历史包保留。本机运行日志在包外；本轮后补验收文档不在冻结源码快照中。ZIP 不随 Git 同步。
 
 生成新的独立测试包（PowerShell 7，仓库根目录）：
 
@@ -61,4 +63,4 @@ pwsh -File build/testing/seal-candidate-package.ps1 -PackageDirectory <返回的
 - [架构与原始验收要求](docs/architecture.md)
 - [HTTP 与应用恢复测试工具](build/testing/README.md)
 
-应用默认诊断日志位于 `%LOCALAPPDATA%\MpvShell\logs`，原生媒体日志对网络地址脱敏，测试素材不随 Git 提交。尚未验收的跨屏、长期稳定性、真实触屏及其他 DPI 等范围见 [Phase 3 进度](docs/implementation/phase-3-progress.md#4-独立跟进与未验证范围)；“最近打开”保存于 `%LOCALAPPDATA%\MpvShell\recent-history.json`，历史功能验收见 [持久化记录](docs/implementation/evidence/P2-02-01-recent-history.md)。当前候选的 GTX 1060 / UU GUI 和正常退出已验，940M / Intel 当前源码的本机兼容验收也已完成；包含修复的新候选独立待更新，历史通过包仍为 Phase 1。
+应用默认诊断日志位于 `%LOCALAPPDATA%\MpvShell\logs`，原生媒体日志对网络地址脱敏，测试素材不随 Git 提交。尚未验收的跨屏、长期稳定性、真实触屏及其他 DPI 等范围见 [Phase 3 进度](docs/implementation/phase-3-progress.md#4-独立跟进与未验证范围)；“最近打开”保存于 `%LOCALAPPDATA%\MpvShell\recent-history.json`，历史功能验收见 [持久化记录](docs/implementation/evidence/P2-02-01-recent-history.md)。当前新版 UI 候选已在 Windows 10.0.26300 / RTX 3070 完成最终目录验收；GTX 1060 / UU 和 HD 4600 的既有接受结论保留各自源码及设备范围，不视为新候选跨设备复验。工程声明的最低 Windows 版本不等于最低版本实机认证；具体支持范围和已知限制见 [本轮发布验收](docs/implementation/evidence/P3-03-01-ui-candidate-20261113.md#6-支持范围与已知限制)。

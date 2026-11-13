@@ -5,6 +5,7 @@
 - 当前计划：[Phase 3 工作包与验收标准](../phase-3-plan.md)
 - 当前状态：[Phase 3 进度](../phase-3-progress.md)
 - 候选及历史通过包：[发布入口](../release-status.md)
+- [P3-03 新版 UI 候选与本轮发布验收（2026-11-13；RTX 3070 范围通过，系统主题及高对比度已验，长测仍暂缓）](P3-03-01-ui-candidate-20261113.md)
 - [P3-00 940M / Intel HD 4600 本机 GUI 与 H.264 验收（2026-11-04；GUI 通过、H.264 常见负载通过，用户确认 HEVC 不要求硬解或 4K60 性能）](P3-00-06-940m-gui-and-h264-acceptance.md)
 - [P3-00 Intel HD 4600 HEVC 兼容修复（2026-11-04；保留原失败、独立验证软件回退，GUI 连接问题另记）](P3-00-05-940m-hevc-compatibility-fix.md)
 - [P3-00 940M / Intel HD 4600 原设备复验（2026-11-04；原生崩溃再次复现，Computer Use 窗口绑定受阻）](P3-00-04-940m-device-revalidation.md)

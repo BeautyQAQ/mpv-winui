@@ -57,7 +57,7 @@ public partial class PlayerViewModel : ObservableObject, IAsyncDisposable
         }
     }
     public string TimeLabel => $"{FormatTime(State.PositionSeconds)} / {FormatTime(State.DurationSeconds)}";
-    public string MediaTitle => string.IsNullOrEmpty(State.CurrentUrl) ? "MpvShell" :
+    public string MediaTitle => string.IsNullOrEmpty(State.CurrentUrl) ? "Veyra" :
         Uri.TryCreate(State.CurrentUrl, UriKind.Absolute, out var uri) && !uri.IsFile
             ? uri.GetLeftPart(UriPartial.Path)
             : Path.GetFileName(State.CurrentUrl);

@@ -8,6 +8,11 @@
     <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <Nullable>enable</Nullable>
+    <AssemblyTitle>Veyra</AssemblyTitle>
+    <Product>Veyra</Product>
+    <Description>Veyra — a lightweight Windows media player.</Description>
+    <Company>BeautyQAQ</Company>
+    <ApplicationIcon>Assets\Branding\Veyra.ico</ApplicationIcon>
     <!-- 未打包应用必须自行声明 PerMonitorV2；否则在 150% 缩放的 4K 屏上视频表面只有 2560×1440。 -->
     <ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>
@@ -29,6 +34,14 @@
     <None Update="Assets\Native\win-x64\*.dll"
           CopyToOutputDirectory="PreserveNewest"
           TargetPath="runtimes\win-x64\native\%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Remove="Assets\Branding\*" />
+    <Content Remove="Assets\Branding\*" />
+    <Content Include="Assets\Branding\*"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>

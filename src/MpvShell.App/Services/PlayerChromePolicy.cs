@@ -11,7 +11,9 @@ public readonly record struct PlayerChromeContext(
     bool HasTimelinePreview,
     bool HasTransientUi,
     bool IsPointerOverControls,
-    bool HasKeyboardFocusWithinControls);
+    bool HasKeyboardFocusWithinControls,
+    bool HasPointerContact = false,
+    bool IsWindowChromeInteracting = false);
 
 public enum PlayerEscapeAction
 {
@@ -24,6 +26,7 @@ public enum PlayerEscapeAction
 
 public static class PlayerChromePolicy
 {
+    public static readonly TimeSpan AutoHideDelay = TimeSpan.FromSeconds(3);
     // 控制条双行布局所需的窗口下限；由 MainWindow 应用到 OverlappedPresenter。
     public const int MinimumWindowWidth = 720;
     public const int MinimumWindowHeight = 640;
@@ -31,7 +34,8 @@ public static class PlayerChromePolicy
     public static bool CanAutoHide(PlayerChromeContext context) =>
         context.IsReady && context.IsWindowActive && context.IsPlaying && !context.IsStopped &&
         !context.HasOverlay && !context.HasActiveInteraction && !context.HasTimelinePreview &&
-        !context.HasTransientUi && !context.IsPointerOverControls && !context.HasKeyboardFocusWithinControls;
+        !context.HasTransientUi && !context.IsPointerOverControls && !context.HasKeyboardFocusWithinControls &&
+        !context.HasPointerContact && !context.IsWindowChromeInteracting;
 
     /// <summary>每次 Esc 只关闭最上层的活动输入或界面，最后才退出全屏。</summary>
     public static PlayerEscapeAction ResolveEscape(

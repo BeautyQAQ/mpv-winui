@@ -36,7 +36,10 @@ public sealed partial class PlayerPage : Page
     private bool _filePickerOpen;
     private bool _windowActive = true;
     private bool _pointerOverControls;
+    private bool _isMousePointer;
     private bool _lastCanAutoHide;
+    private readonly HashSet<uint> _pressedPointers = new();
+    private (int X, int Y)? _lastMouseScreenPosition;
     private OverlayKind _lastOverlay;
     private Control? _overlayFocusReturn;
     private FocusState _overlayFocusState;
@@ -72,8 +75,11 @@ public sealed partial class PlayerPage : Page
         });
         ViewModel.PropertyChanged += OnViewModelPropertyChanged;
         DataContext = ViewModel;
-        RootGrid.AddHandler(UIElement.PointerMovedEvent, new PointerEventHandler(OnAnyPointerActivity), true);
-        RootGrid.AddHandler(UIElement.PointerPressedEvent, new PointerEventHandler(OnAnyPointerActivity), true);
+        RootGrid.AddHandler(UIElement.PointerMovedEvent, new PointerEventHandler(OnAnyPointerMoved), true);
+        RootGrid.AddHandler(UIElement.PointerPressedEvent, new PointerEventHandler(OnAnyPointerPressed), true);
+        RootGrid.AddHandler(UIElement.PointerReleasedEvent, new PointerEventHandler(OnAnyPointerReleased), true);
+        RootGrid.AddHandler(UIElement.PointerCanceledEvent, new PointerEventHandler(OnAnyPointerReleased), true);
+        RootGrid.AddHandler(UIElement.PointerCaptureLostEvent, new PointerEventHandler(OnAnyPointerCaptureLost), true);
         ViewModel.RevealControls();
         _videoSurfaceRenderer.RenderingFailed += OnRenderingFailed;
         _videoSurfaceRenderer.OutputStatusChanged += OnOutputStatusChanged;
@@ -128,11 +134,15 @@ public sealed partial class PlayerPage : Page
             _displayOutputMonitor.Changed += OnDisplayOutputChanged;
             window.AppWindow.Changed += OnAppWindowChanged;
             window.Activated += OnWindowActivated;
+            ((MainWindow)window).TitleBarInteractionChanged += OnTitleBarInteractionChanged;
             QueueOutputRefresh();
             await _outputRefreshTask;
             if (_releaseTask is not null || ViewModel.HasTerminalFailure) return;
             CreateTimers();
             SyncSliders();
+            // 无鼠标点击的启动播放也能接收空格、Tab 和 F11；不抢占已打开的交互界面。
+            if (!_filePickerOpen && !_openMediaFlyoutOpen && !_speedMenuOpen && ViewModel.State.CurrentOverlay == OverlayKind.None)
+                Focus(FocusState.Programmatic);
 #if DEBUG
             Diagnostics.AppRecoveryProbe.NotifyPageReady(this);
 #endif
@@ -157,6 +167,7 @@ public sealed partial class PlayerPage : Page
         {
             window.AppWindow.Changed -= OnAppWindowChanged;
             window.Activated -= OnWindowActivated;
+            ((MainWindow)window).TitleBarInteractionChanged -= OnTitleBarInteractionChanged;
         }
         ViewModel.InfoPanel.PropertyChanged -= OnInfoPanelPropertyChanged;
         if (_displayOutputMonitor is not null)
@@ -216,10 +227,20 @@ public sealed partial class PlayerPage : Page
         RestartAutoHideTimer();
     }
 
+    private void OnTitleBarInteractionChanged(object? sender, EventArgs e)
+    {
+        if (_releaseTask is not null) return;
+        if (((MainWindow)((App)Application.Current).MainWindowInstance!).IsTitleBarInteracting)
+            ViewModel.RevealControls();
+        RestartAutoHideTimer();
+    }
+
     private void OnPlayerGotFocus(object sender, RoutedEventArgs e)
     {
         if (!_ready) return;
-        ViewModel.RevealControls();
+        // 控件折叠后的程序性焦点转移不算用户输入，避免自动隐藏立即被撤销。
+        if (FocusManager.GetFocusedElement(XamlRoot) is Control { FocusState: FocusState.Keyboard })
+            ViewModel.RevealControls();
         RestartAutoHideTimer();
     }
 
@@ -370,14 +391,78 @@ public sealed partial class PlayerPage : Page
             await ViewModel.ChangeSpeedAsync(speed);
     }
 
-    private void OnAnyPointerActivity(object sender, PointerRoutedEventArgs e)
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    private struct ScreenPoint { public int X; public int Y; }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+    private static extern bool GetCursorPos(out ScreenPoint point);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+    private static extern bool ScreenToClient(nint window, ref ScreenPoint point);
+
+    private void OnAnyPointerMoved(object sender, PointerRoutedEventArgs e)
+    {
+        var isMouse = e.Pointer.PointerDeviceType == Microsoft.UI.Input.PointerDeviceType.Mouse;
+        if (isMouse && GetCursorPos(out var position))
+        {
+            var current = (position.X, position.Y);
+            // 原生标题栏显隐会改变客户区坐标；只有屏幕坐标真实移动才唤醒，避免闲置时反复闪回。
+            if (_lastMouseScreenPosition == current)
+            {
+                if (RefreshMouseHover()) RestartAutoHideTimer();
+                return;
+            }
+            _lastMouseScreenPosition = current;
+        }
+        OnAnyPointerActivity(e);
+    }
+
+    private void OnAnyPointerPressed(object sender, PointerRoutedEventArgs e)
+    {
+        _pressedPointers.Add(e.Pointer.PointerId);
+        OnAnyPointerActivity(e);
+    }
+
+    private void OnAnyPointerReleased(object sender, PointerRoutedEventArgs e)
+    {
+        _pressedPointers.Remove(e.Pointer.PointerId);
+        RestartAutoHideTimer();
+    }
+
+    private void OnAnyPointerCaptureLost(object sender, PointerRoutedEventArgs e)
+    {
+        // 控件之间转移捕获不代表手指已松开，持续触摸仍应保护控制条。
+        if (!e.GetCurrentPoint(RootGrid).IsInContact) OnAnyPointerReleased(sender, e);
+    }
+
+    private void OnAnyPointerActivity(PointerRoutedEventArgs e)
     {
         // 触控没有悬停，抬起后不会留下鼠标式的永久自动隐藏阻挡。
-        var point = e.GetCurrentPoint(RootGrid).Position;
-        _pointerOverControls = e.Pointer.PointerDeviceType == Microsoft.UI.Input.PointerDeviceType.Mouse &&
-            (ContainsPoint(HeaderChrome, point) || ContainsPoint(TransportChrome, point));
+        _isMousePointer = e.Pointer.PointerDeviceType == Microsoft.UI.Input.PointerDeviceType.Mouse;
+        // 同步真实输入类型前已滤掉同坐标的鼠标布局事件；触控时同步快照，防止其后静止事件抢回鼠标模式。
+        if (!_isMousePointer && GetCursorPos(out var position)) _lastMouseScreenPosition = (position.X, position.Y);
+        if (((App)Application.Current).MainWindowInstance is MainWindow window)
+            window.NotifyPointerInput(e.Pointer.PointerDeviceType);
         ViewModel.RevealControls();
         RestartAutoHideTimer();
+    }
+
+    private bool RefreshMouseHover()
+    {
+        var previous = _pointerOverControls;
+        _pointerOverControls = false;
+        if (_isMousePointer && XamlRoot is not null && GetCursorPos(out var position) &&
+            ((App)Application.Current).MainWindowInstance is { } window &&
+            ScreenToClient(WinRT.Interop.WindowNative.GetWindowHandle(window), ref position))
+        {
+            // 在判定时重新取坐标，显示控件或改变原生标题栏后不沿用旧客户区坐标。
+            var clientPoint = new Point(position.X / XamlRoot.RasterizationScale, position.Y / XamlRoot.RasterizationScale);
+            var point = XamlRoot.Content.TransformToVisual(RootGrid).TransformPoint(clientPoint);
+            _pointerOverControls = ContainsPoint(HeaderChrome, point) || ContainsPoint(TransportChrome, point);
+        }
+        return previous != _pointerOverControls;
     }
 
     private bool ContainsPoint(FrameworkElement element, Point point)
@@ -471,6 +556,25 @@ public sealed partial class PlayerPage : Page
     private void OnPlayerPreviewKeyDown(object sender, KeyRoutedEventArgs e)
     {
         if (_releaseTask is not null) return;
+        var controlsWereHidden = !ViewModel.State.AreControlsVisible;
+        // 先恢复可见控件，首次 Tab 就能进入控制条；不吞掉系统快捷键和原有按键路由。
+        ViewModel.RevealControls();
+        RestartAutoHideTimer();
+        if (controlsWereHidden && e.Key == VirtualKey.Tab)
+        {
+            // 可见性绑定完成后再导航，避免同一按键仍对折叠的旧控件树查找焦点。
+            var reverse = (Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Shift) &
+                Windows.UI.Core.CoreVirtualKeyStates.Down) != 0;
+            e.Handled = true;
+            DispatcherQueue.TryEnqueue(() =>
+            {
+                if (_releaseTask is not null || !ViewModel.State.AreControlsVisible) return;
+                // 直接定位本页控件，避免多窗口 WinUI 的无 SearchRoot 全局导航。
+                (reverse ? FullscreenButton : OpenFileButton).Focus(FocusState.Keyboard);
+                RestartAutoHideTimer();
+            });
+            return;
+        }
         if (e.Key == VirtualKey.F11 && !_speedMenuOpen && !_openMediaFlyoutOpen)
         {
             ToggleFullscreen();
@@ -672,6 +776,7 @@ public sealed partial class PlayerPage : Page
 
     private void CancelInputInteractions()
     {
+        _pressedPointers.Clear();
         ReleaseInputPointers();
         ViewModel.CancelInputInteractions();
         SyncSliders();
@@ -698,17 +803,22 @@ public sealed partial class PlayerPage : Page
     private void CreateTimers()
     {
         _autoHideTimer = DispatcherQueue.CreateTimer();
-        _autoHideTimer.Interval = TimeSpan.FromSeconds(3);
+        _autoHideTimer.Interval = PlayerChromePolicy.AutoHideDelay;
         _autoHideTimer.IsRepeating = false;
         _autoHideTimer.Tick += (_, _) =>
         {
-            if (CanAutoHide()) ViewModel.OnIdleTimeout();
+            if (CanAutoHide())
+            {
+                if (GetCursorPos(out var position)) _lastMouseScreenPosition = (position.X, position.Y);
+                ViewModel.OnIdleTimeout();
+            }
         };
         _interactionTimer = DispatcherQueue.CreateTimer();
         _interactionTimer.Interval = TimeSpan.FromMilliseconds(50);
         _interactionTimer.IsRepeating = true;
         _interactionTimer.Tick += async (_, _) => { if (_ready) await ViewModel.ProcessInteractionTickAsync(); };
         _interactionTimer.Start();
+        RestartAutoHideTimer();
     }
 
     private void RestartAutoHideTimer()
@@ -721,13 +831,15 @@ public sealed partial class PlayerPage : Page
     private bool CanAutoHide()
     {
         if (!_ready || XamlRoot is null) return false;
+        RefreshMouseHover();
         var focused = FocusManager.GetFocusedElement(XamlRoot) as Control;
         var keyboardFocus = focused is not null && !ReferenceEquals(focused, this) &&
             (focused is TextBox || focused.FocusState == FocusState.Keyboard);
         return PlayerChromePolicy.CanAutoHide(new(_ready, _windowActive, ViewModel.State.IsPlaying,
             ViewModel.State.IsStopped, ViewModel.State.CurrentOverlay != OverlayKind.None,
             ViewModel.HasActiveInteraction, ViewModel.HasTimelinePreview, _speedMenuOpen || _openMediaFlyoutOpen || _filePickerOpen || ViewModel.IsLoading || ViewModel.IsBuffering,
-            _pointerOverControls, keyboardFocus));
+            _pointerOverControls, keyboardFocus, _pressedPointers.Count > 0,
+            ((MainWindow)((App)Application.Current).MainWindowInstance!).IsTitleBarInteracting));
     }
 
     private void UpdateOverlayFocus()
